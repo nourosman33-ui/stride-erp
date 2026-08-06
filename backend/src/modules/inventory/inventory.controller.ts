@@ -1,0 +1,75 @@
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
+import { RolesGuard } from "../../common/guards/roles.guard";
+import { Roles } from "../../common/decorators/roles.decorator";
+import { CurrentUser, AuthenticatedUser } from "../../common/decorators/current-user.decorator";
+import { InventoryService } from "./inventory.service";
+import { AuditService } from "../../common/audit/audit.service";
+import { CreateAdjustmentDto } from "./dto/create-adjustment.dto";
+
+@Controller("inventory")
+@UseGuards(JwtAuthGuard, RolesGuard)
+export class InventoryController {
+  constructor(
+    private readonly inventoryService: InventoryService,
+    private readonly audit: AuditService,
+  ) {}
+
+  @Get("stock/:storeId")
+  listStock(@Param("storeId") storeId: string) {
+    return this.inventoryService.listStockOnHand(storeId);
+  }
+
+  @Get("stock/:storeId/:variantId")
+  getStock(@Param("storeId") storeId: string, @Param("variantId") variantId: string) {
+    return this.inventoryService.getStockOnHand(storeId, variantId);
+  }
+
+  @Get("movement-status/:storeId/:variantId")
+  getMovementStatus(
+    @Param("storeId") storeId: string,
+    @Param("variantId") variantId: string,
+  ) {
+    return this.inventoryService.getMovementStatus(storeId, variantId);
+  }
+
+  @Get("value/:storeId")
+  getTotalValue(@Param("storeId") storeId: string) {
+    return this.inventoryService.getTotalInventoryValue(storeId).then((total) => ({
+      storeId,
+      totalInventoryValue: total,
+    }));
+  }
+
+  @Get("reorder-alerts/:storeId")
+  getReorderAlerts(@Param("storeId") storeId: string) {
+    return this.inventoryService.getReorderAlerts(storeId);
+  }
+
+  @Post("adjustments")
+  @Roles("owner", "manager", "inventory_clerk")
+  async createAdjustment(
+    @Body() dto: CreateAdjustmentDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    const entry = await this.inventoryService.postStockMovement({
+      storeId: dto.storeId,
+      variantId: dto.variantId,
+      entryType: "adjustment",
+      quantityDelta: dto.quantityDelta,
+      reasonCode: dto.reasonCode,
+      referenceType: "manual",
+      performedById: user.userId,
+    });
+
+    await this.audit.record({
+      entityType: "stock_ledger_entry",
+      entityId: entry.id,
+      action: "create",
+      performedById: user.userId,
+      after: { ...dto },
+    });
+
+    return entry;
+  }
+}

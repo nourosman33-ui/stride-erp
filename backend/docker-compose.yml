@@ -1,0 +1,25 @@
+version: "3.9"
+
+# Local development infrastructure only. Production uses managed Postgres /
+# Redis / object storage per docs/Architecture.md section 8.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: stride
+      POSTGRES_PASSWORD: stride_dev_password
+      POSTGRES_DB: stride_erp
+    ports:
+      - "5432:5432"
+    volumes:
+      - stride_postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+volumes:
+  stride_postgres_data:

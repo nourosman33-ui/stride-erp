@@ -1,0 +1,134 @@
+import { BadRequestException } from "@nestjs/common";
+import { InventoryService } from "./inventory.service";
+
+function buildPrismaMock() {
+  return {
+    stockLedgerEntry: {
+      create: jest.fn(),
+      aggregate: jest.fn(),
+      groupBy: jest.fn(),
+      findMany: jest.fn(),
+    },
+    productVariant: { findMany: jest.fn() },
+    movementStatusRule: { findUnique: jest.fn() },
+  };
+}
+
+describe("InventoryService", () => {
+  let prisma: ReturnType<typeof buildPrismaMock>;
+  let service: InventoryService;
+
+  beforeEach(() => {
+    prisma = buildPrismaMock();
+    service = new InventoryService(prisma as any);
+  });
+
+  describe("postStockMovement — the only write path to the stock ledger (FR-INV-1/2)", () => {
+    it("rejects a zero quantity delta", async () => {
+      await expect(
+        service.postStockMovement({
+          storeId: "s1",
+          variantId: "v1",
+          entryType: "sale",
+          quantityDelta: 0,
+          performedById: "u1",
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.stockLedgerEntry.create).not.toHaveBeenCalled();
+    });
+
+    it("requires a reasonCode for adjustments (FR-INV-5)", async () => {
+      await expect(
+        service.postStockMovement({
+          storeId: "s1",
+          variantId: "v1",
+          entryType: "adjustment",
+          quantityDelta: -2,
+          performedById: "u1",
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.stockLedgerEntry.create).not.toHaveBeenCalled();
+    });
+
+    it("persists a valid receipt entry", async () => {
+      prisma.stockLedgerEntry.create.mockResolvedValue({ id: "entry-1" });
+
+      const result = await service.postStockMovement({
+        storeId: "s1",
+        variantId: "v1",
+        entryType: "receipt",
+        quantityDelta: 120,
+        unitCost: 250,
+        performedById: "u1",
+      });
+
+      expect(result).toEqual({ id: "entry-1" });
+      expect(prisma.stockLedgerEntry.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ quantityDelta: 120, entryType: "receipt" }),
+        }),
+      );
+    });
+  });
+
+  describe("getStockOnHand — always a derived sum, never a stored counter (FR-INV-1)", () => {
+    it("defaults to zero when there are no ledger entries", async () => {
+      prisma.stockLedgerEntry.aggregate.mockResolvedValue({ _sum: { quantityDelta: null } });
+      await expect(service.getStockOnHand("s1", "v1")).resolves.toBe(0);
+    });
+
+    it("returns the aggregated sum of all movements", async () => {
+      prisma.stockLedgerEntry.aggregate.mockResolvedValue({ _sum: { quantityDelta: 75 } });
+      await expect(service.getStockOnHand("s1", "v1")).resolves.toBe(75);
+    });
+  });
+
+  describe("getMovementStatus — Fast/Slow/Dead classification (FR-INV-3)", () => {
+    it("classifies Fast Moving at/above the configured threshold", async () => {
+      prisma.movementStatusRule.findUnique.mockResolvedValue({
+        fastMovingThresholdPct: 0.7,
+        deadStockThresholdPct: 0.1,
+      });
+      prisma.stockLedgerEntry.aggregate
+        .mockResolvedValueOnce({ _sum: { quantityDelta: 100 } }) // received
+        .mockResolvedValueOnce({ _sum: { quantityDelta: -70 } }); // sold (stored as negative delta)
+
+      const result = await service.getMovementStatus("s1", "v1");
+      expect(result.status).toBe("Fast Moving");
+      expect(result.soldRatio).toBeCloseTo(0.7);
+    });
+
+    it("classifies Dead Stock at/below the default threshold when no rule is configured", async () => {
+      prisma.movementStatusRule.findUnique.mockResolvedValue(null);
+      prisma.stockLedgerEntry.aggregate
+        .mockResolvedValueOnce({ _sum: { quantityDelta: 100 } })
+        .mockResolvedValueOnce({ _sum: { quantityDelta: -5 } });
+
+      const result = await service.getMovementStatus("s1", "v1");
+      expect(result.status).toBe("Dead Stock");
+    });
+
+    it("classifies Slow Moving strictly between the two thresholds", async () => {
+      prisma.movementStatusRule.findUnique.mockResolvedValue({
+        fastMovingThresholdPct: 0.7,
+        deadStockThresholdPct: 0.1,
+      });
+      prisma.stockLedgerEntry.aggregate
+        .mockResolvedValueOnce({ _sum: { quantityDelta: 100 } })
+        .mockResolvedValueOnce({ _sum: { quantityDelta: -40 } });
+
+      const result = await service.getMovementStatus("s1", "v1");
+      expect(result.status).toBe("Slow Moving");
+    });
+
+    it("reports 'No Stock Received' distinctly from Dead Stock when nothing was ever received", async () => {
+      prisma.movementStatusRule.findUnique.mockResolvedValue(null);
+      prisma.stockLedgerEntry.aggregate
+        .mockResolvedValueOnce({ _sum: { quantityDelta: 0 } })
+        .mockResolvedValueOnce({ _sum: { quantityDelta: 0 } });
+
+      const result = await service.getMovementStatus("s1", "v1");
+      expect(result.status).toBe("No Stock Received");
+    });
+  });
+});

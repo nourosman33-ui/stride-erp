@@ -1,0 +1,493 @@
+// STRIDE ERP — Prisma schema
+// Phase 0 (Identity, Store, Audit) + Phase 1 (Catalog, Suppliers, Purchasing, Inventory)
+// Mirrors docs/Database.md. Deviations from that doc are noted inline where they occur:
+// Prisma has no portable "generated column" feature, so computed money fields
+// (line_total, expected_profit) are calculated in the service layer and persisted,
+// not database-generated. Prisma also has no true polymorphic relation, so
+// StockLedgerEntry keeps the descriptive reference_type/reference_id pair from
+// Database.md *and* adds typed optional FKs for the source documents implemented
+// so far (goods receipt, purchase return); later phases add their own FK as they land.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ======================================================================
+// Phase 0 — Identity, Store, Audit
+// ======================================================================
+
+model Store {
+  id                       String    @id @default(uuid())
+  name                     String
+  address                  String?
+  sizeSqm                  Decimal?  @map("size_sqm") @db.Decimal(8, 2)
+  frontageM                Decimal?  @map("frontage_m") @db.Decimal(8, 2)
+  openingDate              DateTime? @map("opening_date") @db.Date
+  concept                  String?
+  targetMarket             String?   @map("target_market")
+  currency                 String    @default("EGP")
+  vatRate                  Decimal   @default(14.00) @map("vat_rate") @db.Decimal(5, 2)
+  poApprovalThreshold      Decimal   @default(5000.00) @map("po_approval_threshold") @db.Decimal(12, 2)
+  discountApprovalLimitPct Decimal   @default(10.00) @map("discount_approval_limit_pct") @db.Decimal(5, 2)
+  isActive                 Boolean   @default(true) @map("is_active")
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
+
+  userRoles           UserRole[]
+  purchaseOrders      PurchaseOrder[]
+  stockLedgerEntries  StockLedgerEntry[]
+  movementStatusRule  MovementStatusRule?
+
+  @@map("store")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  fullName     String   @map("full_name")
+  email        String   @unique
+  phone        String?
+  passwordHash String   @map("password_hash")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  userRoles          UserRole[]
+  auditLogs          AuditLog[]
+  priceChangesMade   PriceHistory[]      @relation("PriceChangedBy")
+  poApproved         PurchaseOrder[]     @relation("PoApprovedBy")
+  poCreated          PurchaseOrder[]     @relation("PoCreatedBy")
+  goodsReceipts      GoodsReceipt[]      @relation("ReceivedBy")
+  stockLedgerEntries StockLedgerEntry[]  @relation("StockPerformedBy")
+  purchaseReturns    PurchaseReturn[]    @relation("PurchaseReturnCreatedBy")
+
+  @@map("app_user")
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique // owner | manager | cashier | inventory_clerk | accountant | viewer
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  userRoles UserRole[]
+
+  @@map("role")
+}
+
+model UserRole {
+  id      String  @id @default(uuid())
+  userId  String  @map("user_id")
+  roleId  String  @map("role_id")
+  storeId String? @map("store_id") // null = access across all stores
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role  Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  store Store? @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId, storeId])
+  @@map("user_role")
+}
+
+enum AuditAction {
+  create
+  update
+  delete
+  approve
+}
+
+model AuditLog {
+  id            String      @id @default(uuid())
+  entityType    String      @map("entity_type")
+  entityId      String      @map("entity_id")
+  action        AuditAction
+  performedById String      @map("performed_by")
+  beforeValue   Json?       @map("before_value")
+  afterValue    Json?       @map("after_value")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  performedBy User @relation(fields: [performedById], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_log")
+}
+
+// ======================================================================
+// Phase 1 — Catalog lookups
+// ======================================================================
+
+model Category {
+  id       String    @id @default(uuid())
+  name     String    @unique
+  products Product[]
+
+  @@map("category")
+}
+
+model Gender {
+  id       String    @id @default(uuid())
+  name     String    @unique // Men | Women | Kids | Unisex
+  products Product[]
+
+  @@map("gender")
+}
+
+model ProductType {
+  id       String    @id @default(uuid())
+  name     String    @unique // Sneaker | Sandal | Boot | Loafer ...
+  products Product[]
+
+  @@map("product_type")
+}
+
+model SizeValue {
+  id        String   @id @default(uuid())
+  standard  String // EU | UK | US
+  value     String // "42"
+  sortOrder Int      @default(0) @map("sort_order")
+
+  variants ProductVariant[]
+
+  @@unique([standard, value])
+  @@map("size_value")
+}
+
+model Color {
+  id      String @id @default(uuid())
+  name    String @unique
+  hexCode String? @map("hex_code")
+
+  variants ProductVariant[]
+
+  @@map("color")
+}
+
+// ======================================================================
+// Phase 1 — Product Catalog
+// ======================================================================
+
+model Product {
+  id               String   @id @default(uuid())
+  modelName        String   @map("model_name")
+  categoryId       String   @map("category_id")
+  genderId         String   @map("gender_id")
+  productTypeId    String   @map("product_type_id")
+  brand            String?
+  baseCostPrice    Decimal  @map("base_cost_price") @db.Decimal(12, 2)
+  baseSellingPrice Decimal  @map("base_selling_price") @db.Decimal(12, 2)
+  description      String?
+  imageUrl         String?  @map("image_url")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  category    Category    @relation(fields: [categoryId], references: [id])
+  gender      Gender      @relation(fields: [genderId], references: [id])
+  productType ProductType @relation(fields: [productTypeId], references: [id])
+
+  variants         ProductVariant[]
+  priceHistory     PriceHistory[]
+  productSuppliers ProductSupplier[]
+
+  @@index([categoryId])
+  @@index([genderId])
+  @@index([productTypeId])
+  @@map("product")
+}
+
+model ProductVariant {
+  id                   String   @id @default(uuid())
+  productId            String   @map("product_id")
+  sizeValueId          String   @map("size_value_id")
+  colorId              String   @map("color_id")
+  barcode              String   @unique
+  costPriceOverride    Decimal? @map("cost_price_override") @db.Decimal(12, 2)
+  sellingPriceOverride Decimal? @map("selling_price_override") @db.Decimal(12, 2)
+  reorderPoint         Int      @default(0) @map("reorder_point")
+  isActive             Boolean  @default(true) @map("is_active")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sizeValue SizeValue @relation(fields: [sizeValueId], references: [id])
+  color     Color     @relation(fields: [colorId], references: [id])
+
+  priceHistory       PriceHistory[]
+  purchaseOrderLines PurchaseOrderLine[]
+  stockLedgerEntries StockLedgerEntry[]
+  purchaseReturns    PurchaseReturn[]
+
+  @@unique([productId, sizeValueId, colorId])
+  @@map("product_variant")
+}
+
+enum PriceField {
+  cost_price
+  selling_price
+}
+
+model PriceHistory {
+  id          String     @id @default(uuid())
+  productId   String     @map("product_id")
+  variantId   String?    @map("variant_id")
+  field       PriceField
+  oldValue    Decimal?   @map("old_value") @db.Decimal(12, 2)
+  newValue    Decimal    @map("new_value") @db.Decimal(12, 2)
+  effectiveAt DateTime   @default(now()) @map("effective_at")
+  changedById String     @map("changed_by")
+  reason      String?
+
+  product   Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  changedBy User            @relation("PriceChangedBy", fields: [changedById], references: [id])
+
+  @@index([productId])
+  @@map("price_history")
+}
+
+// ======================================================================
+// Phase 1 — Suppliers
+// ======================================================================
+
+model Supplier {
+  id              String   @id @default(uuid())
+  name            String
+  factoryName     String?  @map("factory_name")
+  address         String?
+  phone           String?
+  whatsapp        String?
+  socialContact   String?  @map("social_contact")
+  minimumOrder    String?  @map("minimum_order")
+  paymentTerms    String?  @map("payment_terms")
+  leadTimeDaysMin Int?     @map("lead_time_days_min")
+  leadTimeDaysMax Int?     @map("lead_time_days_max")
+  qualityRating   Int?     @map("quality_rating") // 1-5, enforced in DTO validation
+  notes           String?
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  productSuppliers ProductSupplier[]
+  purchaseOrders   PurchaseOrder[]
+  ledgerEntries    SupplierLedgerEntry[]
+
+  @@index([name])
+  @@map("supplier")
+}
+
+model ProductSupplier {
+  id                String   @id @default(uuid())
+  productId         String   @map("product_id")
+  supplierId        String   @map("supplier_id")
+  supplierCostPrice Decimal  @map("supplier_cost_price") @db.Decimal(12, 2)
+  piecesPerCarton   Int?     @map("pieces_per_carton")
+  isPreferred       Boolean  @default(false) @map("is_preferred")
+
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, supplierId])
+  @@map("product_supplier")
+}
+
+enum SupplierLedgerType {
+  deposit
+  payment
+  credit_note
+}
+
+model SupplierLedgerEntry {
+  id              String             @id @default(uuid())
+  supplierId      String             @map("supplier_id")
+  purchaseOrderId String?            @map("purchase_order_id")
+  type            SupplierLedgerType
+  amount          Decimal            @db.Decimal(12, 2)
+  balanceAfter    Decimal            @map("balance_after") @db.Decimal(12, 2)
+  note            String?
+  createdAt       DateTime           @default(now()) @map("created_at")
+
+  supplier      Supplier       @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+
+  @@index([supplierId])
+  @@map("supplier_ledger_entry")
+}
+
+// ======================================================================
+// Phase 1 — Purchasing
+// ======================================================================
+
+enum PoStatus {
+  draft
+  pending_approval
+  approved
+  partially_received
+  received
+  cancelled
+}
+
+model PurchaseOrder {
+  id                   String    @id @default(uuid())
+  storeId              String    @map("store_id")
+  supplierId           String    @map("supplier_id")
+  status               PoStatus  @default(draft)
+  orderDate            DateTime  @default(now()) @map("order_date")
+  expectedDeliveryDate DateTime? @map("expected_delivery_date") @db.Date
+  approvedById         String?   @map("approved_by")
+  createdById          String    @map("created_by")
+  notes                String?
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  store      Store    @relation(fields: [storeId], references: [id])
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+  approvedBy User?    @relation("PoApprovedBy", fields: [approvedById], references: [id])
+  createdBy  User     @relation("PoCreatedBy", fields: [createdById], references: [id])
+
+  lines                 PurchaseOrderLine[]
+  goodsReceipts         GoodsReceipt[]
+  supplierLedgerEntries SupplierLedgerEntry[]
+  purchaseReturns       PurchaseReturn[]
+
+  @@index([storeId, status])
+  @@index([supplierId])
+  @@map("purchase_order")
+}
+
+model PurchaseOrderLine {
+  id                  String  @id @default(uuid())
+  purchaseOrderId     String  @map("purchase_order_id")
+  variantId           String  @map("variant_id")
+  quantityOrdered     Int     @map("quantity_ordered")
+  cartons              Int?
+  piecesPerCarton     Int?    @map("pieces_per_carton")
+  costPrice           Decimal @map("cost_price") @db.Decimal(12, 2)
+  sellingPriceAtOrder Decimal @map("selling_price_at_order") @db.Decimal(12, 2)
+  // lineTotal / expectedProfit computed in service layer at write time — see file header note.
+  lineTotal           Decimal @map("line_total") @db.Decimal(14, 2)
+  expectedProfit      Decimal @map("expected_profit") @db.Decimal(14, 2)
+
+  purchaseOrder     PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  variant           ProductVariant     @relation(fields: [variantId], references: [id])
+  goodsReceiptLines GoodsReceiptLine[]
+
+  @@index([purchaseOrderId])
+  @@map("purchase_order_line")
+}
+
+enum GoodsReceiptStatus {
+  full
+  partial
+  discrepancy
+}
+
+model GoodsReceipt {
+  id              String             @id @default(uuid())
+  purchaseOrderId String             @map("purchase_order_id")
+  receivedDate    DateTime           @default(now()) @map("received_date")
+  receivedById    String             @map("received_by")
+  status          GoodsReceiptStatus
+  createdAt       DateTime           @default(now()) @map("created_at")
+
+  purchaseOrder PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id])
+  receivedBy    User               @relation("ReceivedBy", fields: [receivedById], references: [id])
+  lines         GoodsReceiptLine[]
+
+  @@index([purchaseOrderId])
+  @@map("goods_receipt")
+}
+
+model GoodsReceiptLine {
+  id                  String  @id @default(uuid())
+  goodsReceiptId      String  @map("goods_receipt_id")
+  purchaseOrderLineId String  @map("po_line_id")
+  quantityReceived    Int     @map("quantity_received")
+  quantityExpected    Int     @map("quantity_expected")
+  discrepancyReason   String? @map("discrepancy_reason")
+
+  goodsReceipt       GoodsReceipt      @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
+  purchaseOrderLine  PurchaseOrderLine @relation(fields: [purchaseOrderLineId], references: [id])
+  stockLedgerEntries StockLedgerEntry[]
+
+  @@index([goodsReceiptId])
+  @@map("goods_receipt_line")
+}
+
+model PurchaseReturn {
+  id              String   @id @default(uuid())
+  purchaseOrderId String?  @map("purchase_order_id")
+  variantId       String   @map("variant_id")
+  quantity        Int
+  reason          String
+  createdById     String   @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  purchaseOrder      PurchaseOrder?     @relation(fields: [purchaseOrderId], references: [id])
+  variant            ProductVariant     @relation(fields: [variantId], references: [id])
+  createdBy           User              @relation("PurchaseReturnCreatedBy", fields: [createdById], references: [id])
+  stockLedgerEntries  StockLedgerEntry[]
+
+  @@index([variantId])
+  @@map("purchase_return")
+}
+
+// ======================================================================
+// Phase 1 — Inventory: the append-only stock ledger
+// (See docs/Database.md section 9.3 for why this must never be a mutable
+//  quantity column: it is the structural fix for the source spreadsheet's
+//  disconnected Sales Tracker / Inventory Tracker problem.)
+// ======================================================================
+
+enum StockEntryType {
+  receipt
+  sale
+  sale_return
+  adjustment
+  transfer_out
+  transfer_in
+  count_correction
+  purchase_return
+}
+
+model StockLedgerEntry {
+  id            String         @id @default(uuid())
+  storeId       String         @map("store_id")
+  variantId     String         @map("variant_id")
+  entryType     StockEntryType @map("entry_type")
+  quantityDelta Int            @map("quantity_delta") // signed: + increases stock, - decreases
+  unitCost      Decimal?       @map("unit_cost") @db.Decimal(12, 2)
+  referenceType String?        @map("reference_type") // purchase_order | sales_order | stock_count | manual
+  referenceId   String?        @map("reference_id")
+  reasonCode    String?        @map("reason_code") // required for entryType = adjustment
+  performedById String         @map("performed_by")
+  createdAt     DateTime       @default(now()) @map("created_at") // immutable — never updated
+
+  store       Store          @relation(fields: [storeId], references: [id])
+  variant     ProductVariant @relation(fields: [variantId], references: [id])
+  performedBy User           @relation("StockPerformedBy", fields: [performedById], references: [id])
+
+  goodsReceiptLineId String?           @map("goods_receipt_line_id")
+  goodsReceiptLine   GoodsReceiptLine? @relation(fields: [goodsReceiptLineId], references: [id])
+  purchaseReturnId   String?           @map("purchase_return_id")
+  purchaseReturn     PurchaseReturn?   @relation(fields: [purchaseReturnId], references: [id])
+
+  @@index([storeId, variantId])
+  @@index([entryType])
+  @@index([createdAt])
+  @@map("stock_ledger_entry")
+}
+
+model MovementStatusRule {
+  storeId                String  @id @map("store_id")
+  fastMovingThresholdPct Decimal @default(0.70) @map("fast_moving_threshold_pct") @db.Decimal(4, 2)
+  deadStockThresholdPct  Decimal @default(0.10) @map("dead_stock_threshold_pct") @db.Decimal(4, 2)
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@map("movement_status_rule")
+}
