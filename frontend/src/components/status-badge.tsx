@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { useLocale } from "@/lib/i18n/locale-context";
-import type { PoStatus } from "@/lib/api/types";
+import type { PoStatus, SalesOrderStatus } from "@/lib/api/types";
 
 const PO_VARIANT: Record<PoStatus, "default" | "secondary" | "outline" | "destructive" | "success" | "warning"> = {
   draft: "outline",
@@ -14,6 +14,18 @@ const PO_VARIANT: Record<PoStatus, "default" | "secondary" | "outline" | "destru
 export function PoStatusBadge({ status }: { status: PoStatus }) {
   const { t } = useLocale();
   return <Badge variant={PO_VARIANT[status]}>{t(`status.${status}`)}</Badge>;
+}
+
+const SALES_ORDER_VARIANT: Record<SalesOrderStatus, "default" | "secondary" | "outline" | "destructive" | "success" | "warning"> = {
+  completed: "success",
+  partially_returned: "warning",
+  returned: "secondary",
+  voided: "destructive",
+};
+
+export function SalesOrderStatusBadge({ status }: { status: SalesOrderStatus }) {
+  const { t } = useLocale();
+  return <Badge variant={SALES_ORDER_VARIANT[status]}>{t(`status.${status}`)}</Badge>;
 }
 
 const MOVEMENT_VARIANT: Record<string, "success" | "warning" | "destructive" | "outline"> = {

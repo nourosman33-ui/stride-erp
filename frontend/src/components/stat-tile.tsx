@@ -17,7 +17,7 @@ export function StatTile({
   tone?: "default" | "warning" | "critical";
 }) {
   return (
-    <Card>
+    <Card className="overflow-hidden transition hover:-translate-y-0.5 hover:shadow-md">
       <CardContent className="flex items-start justify-between gap-3">
         <div className="space-y-1">
           <p className="text-sm text-muted-foreground">{label}</p>
@@ -34,9 +34,9 @@ export function StatTile({
         </div>
         <div
           className={cn(
-            "flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted",
-            tone === "warning" && "bg-warning/15 text-warning",
-            tone === "critical" && "bg-destructive/10 text-destructive",
+            "flex size-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary/15 to-primary/5 text-primary",
+            tone === "warning" && "bg-gradient-to-br from-warning/25 to-warning/10 text-warning",
+            tone === "critical" && "bg-gradient-to-br from-destructive/20 to-destructive/5 text-destructive",
           )}
         >
           <Icon className="size-4" />

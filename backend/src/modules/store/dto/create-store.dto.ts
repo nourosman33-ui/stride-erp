@@ -9,6 +9,10 @@ export class CreateStoreDto {
   address?: string;
 
   @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @IsOptional()
   @IsNumber()
   @Min(0)
   sizeSqm?: number;

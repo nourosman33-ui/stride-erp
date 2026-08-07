@@ -72,6 +72,30 @@ export function createProduct(input: CreateProductInput) {
   return apiFetch<Product>("/products", { method: "POST", body: input });
 }
 
+export interface QuickAddProductInput extends CreateProductInput {
+  storeId: string;
+  sizeValueIds: string[];
+  colorIds: string[];
+  /** Applied to every combination that has no explicit override. */
+  openingQuantity?: number;
+  variantQuantities?: { sizeValueId: string; colorId: string; quantity: number }[];
+  reorderPoint?: number;
+}
+
+export interface QuickAddProductResult {
+  product: Product;
+  variantCount: number;
+  unitsAdded: number;
+}
+
+/** Product + every size×color variant + opening stock, in one backend transaction. */
+export function quickAddProduct(input: QuickAddProductInput) {
+  return apiFetch<QuickAddProductResult>("/products/quick-add", {
+    method: "POST",
+    body: input,
+  });
+}
+
 export interface CreateVariantInput {
   sizeValueId: string;
   colorId: string;

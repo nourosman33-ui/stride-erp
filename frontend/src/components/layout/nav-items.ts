@@ -13,6 +13,9 @@ import {
   Store,
   Users,
   AlertTriangle,
+  Contact,
+  Receipt,
+  Bot,
 } from "lucide-react";
 import type { Role } from "@/lib/api/types";
 import type { TranslationKey } from "@/lib/i18n/locale-context";
@@ -60,11 +63,21 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     labelKey: "nav.groupSales",
-    items: [{ labelKey: "nav.pos", href: "/pos", icon: ScanBarcode }],
+    items: [
+      { labelKey: "nav.pos", href: "/pos", icon: ScanBarcode },
+      { labelKey: "nav.salesHistory", href: "/sales", icon: Receipt, roles: BACK_OFFICE_ROLES },
+    ],
+  },
+  {
+    labelKey: "nav.groupCustomers",
+    items: [{ labelKey: "nav.customers", href: "/customers", icon: Contact, roles: BACK_OFFICE_ROLES }],
   },
   {
     labelKey: "nav.groupInsights",
-    items: [{ labelKey: "nav.reports", href: "/reports", icon: BarChart3, roles: BACK_OFFICE_ROLES }],
+    items: [
+      { labelKey: "nav.reports", href: "/reports", icon: BarChart3, roles: BACK_OFFICE_ROLES },
+      { labelKey: "nav.aiAssistant", href: "/ai", icon: Bot, roles: ["owner"] },
+    ],
   },
   {
     labelKey: "nav.groupSettings",

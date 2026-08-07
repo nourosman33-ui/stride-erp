@@ -42,6 +42,7 @@ export interface Store {
   id: string;
   name: string;
   address: string | null;
+  phone: string | null;
   sizeSqm: string | null;
   frontageM: string | null;
   openingDate: string | null;
@@ -54,6 +55,16 @@ export interface Store {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  logoUrl: string | null;
+  taxNumber: string | null;
+  receiptFooterLine1: string | null;
+  receiptFooterLine2: string | null;
+  returnPeriodDays: number;
+  loyaltyPointsPerCurrency: string;
+  loyaltyPointValue: string;
+  loyaltySilverThreshold: string;
+  loyaltyGoldThreshold: string;
+  loyaltyPlatinumThreshold: string;
 }
 
 export interface Category {
@@ -110,6 +121,7 @@ export interface ProductVariant {
   sizeValueId: string;
   colorId: string;
   barcode: string;
+  sku: string | null;
   costPriceOverride: string | null;
   sellingPriceOverride: string | null;
   reorderPoint: number;
@@ -307,12 +319,50 @@ export interface MovementStatus {
   soldRatio: number | null;
 }
 
+export type LoyaltyTier = "bronze" | "silver" | "gold" | "platinum";
+
 export interface Customer {
   id: string;
   name: string;
   phone: string | null;
+  email: string | null;
+  gender: string | null;
+  birthDate: string | null;
   notes: string | null;
   createdAt: string;
+  updatedAt: string;
+}
+
+// Shape returned by GET /customers and GET /customers/phone/:phone — Customer plus
+// derived (never stored) purchase stats, same numbers-not-strings convention as
+// StockOnHandRow since these are computed server-side, not Prisma Decimal passthrough.
+export interface CustomerWithStats extends Customer {
+  totalOrders: number;
+  lifetimeSpending: number;
+  lastPurchaseAt: string | null;
+  pointsBalance: number;
+}
+
+export type LoyaltyTransactionType = "earn" | "redeem" | "adjustment";
+
+export interface LoyaltyTransaction {
+  id: string;
+  customerId: string;
+  storeId: string;
+  type: LoyaltyTransactionType;
+  pointsDelta: number;
+  referenceType: string | null;
+  referenceId: string | null;
+  performedById: string | null;
+  note: string | null;
+  createdAt: string;
+}
+
+// Shape returned by GET /customers/:id — stats + tier + recent orders/loyalty history.
+export interface CustomerDetail extends CustomerWithStats {
+  tier: LoyaltyTier;
+  salesOrders?: SalesOrder[];
+  loyaltyTransactions?: LoyaltyTransaction[];
 }
 
 export type SalesOrderStatus = "completed" | "partially_returned" | "returned" | "voided";
@@ -351,6 +401,10 @@ export interface SalesOrder {
   discountTotal: string;
   taxTotal: string;
   grandTotal: string;
+  pointsEarned: number;
+  pointsRedeemed: number;
+  amountTendered: string | null;
+  changeDue: string;
   status: SalesOrderStatus;
   createdAt: string;
   store?: Store;
@@ -358,4 +412,44 @@ export interface SalesOrder {
   cashier?: { id: string; fullName: string };
   lines?: SalesOrderLine[];
   payments?: Payment[];
+  // Only present on the immediate checkout response — the customer's post-sale points
+  // balance and tier, for the receipt. Not persisted on the order itself.
+  loyaltySnapshot?: { pointsBalance: number; tier: LoyaltyTier } | null;
+}
+
+export type AiMessageRole = "user" | "assistant" | "system";
+
+export interface AiToolCallRecord {
+  tool: string;
+  input?: Record<string, unknown>;
+  output: unknown;
+}
+
+export interface AiMessage {
+  id: string;
+  conversationId: string;
+  role: AiMessageRole;
+  content: string;
+  toolCalls: AiToolCallRecord[] | null;
+  createdAt: string;
+}
+
+export interface AiConversation {
+  id: string;
+  ownerId: string;
+  storeId: string | null;
+  title: string | null;
+  createdAt: string;
+  updatedAt: string;
+  messages?: AiMessage[];
+}
+
+export interface AiInsights {
+  revenueToday: { revenue: number; orderCount: number };
+  profitToday: { revenue: number; cogs: number; profit: number };
+  unitsSoldToday: { unitsSold: number };
+  topProducts: { variantId: string; productName: string; sizeLabel: string; colorName: string; unitsSold: number }[];
+  lowStock: StockOnHandRow[];
+  weekComparison: { thisWeekRevenue: number; lastWeekRevenue: number; changePct: number | null };
+  recommendations: string[];
 }

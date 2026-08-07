@@ -4,6 +4,7 @@ import type { Store } from "./types";
 export interface CreateStoreInput {
   name: string;
   address?: string;
+  phone?: string;
   sizeSqm?: number;
   frontageM?: number;
   openingDate?: string;
@@ -13,6 +14,16 @@ export interface CreateStoreInput {
   vatRate?: number;
   poApprovalThreshold?: number;
   discountApprovalLimitPct?: number;
+  logoUrl?: string;
+  taxNumber?: string;
+  receiptFooterLine1?: string;
+  receiptFooterLine2?: string;
+  returnPeriodDays?: number;
+  loyaltyPointsPerCurrency?: number;
+  loyaltyPointValue?: number;
+  loyaltySilverThreshold?: number;
+  loyaltyGoldThreshold?: number;
+  loyaltyPlatinumThreshold?: number;
 }
 
 export type UpdateStoreInput = Partial<CreateStoreInput>;

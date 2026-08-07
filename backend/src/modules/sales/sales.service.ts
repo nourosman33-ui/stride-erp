@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../../common/audit/audit.service";
 import { InventoryService } from "../inventory/inventory.service";
+import { CustomersService } from "../customers/customers.service";
 import { CreateSaleDto } from "./dto/create-sale.dto";
 
 // Sub-cent rounding slack when comparing SUM(payments) to grand_total (FR-SAL-3).
@@ -59,6 +60,7 @@ export class SalesService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly inventory: InventoryService,
+    private readonly customers: CustomersService,
   ) {}
 
   /**
@@ -82,6 +84,11 @@ export class SalesService {
       if (!customer) {
         throw new NotFoundException(`Customer ${dto.customerId} not found`);
       }
+    }
+
+    const redeemPoints = dto.redeemPoints ?? 0;
+    if (redeemPoints > 0 && !dto.customerId && !dto.newCustomer) {
+      throw new BadRequestException("Redeeming loyalty points requires a customer on the sale");
     }
 
     const variants = await this.prisma.productVariant.findMany({
@@ -132,14 +139,63 @@ export class SalesService {
     taxTotal = Number(taxTotal.toFixed(2));
     const grandTotal = Number((subtotal - discountTotal + taxTotal).toFixed(2));
 
-    const paymentTotal = Number(dto.payments.reduce((sum, p) => sum + p.amount, 0).toFixed(2));
-    if (Math.abs(paymentTotal - grandTotal) > MONEY_EPSILON) {
+    // Redeemed points act as a payment source paid in points instead of cash/card — the
+    // recorded Payment rows only need to cover what's left after redemption.
+    const redemptionValue = Number(
+      (redeemPoints * Number(store.loyaltyPointValue ?? 1)).toFixed(2),
+    );
+    if (redemptionValue > grandTotal) {
       throw new BadRequestException(
-        `Payment total (${paymentTotal}) does not match invoice total (${grandTotal})`,
+        `Redemption value (${redemptionValue}) cannot exceed the invoice total (${grandTotal})`,
+      );
+    }
+    const netPayable = Number((grandTotal - redemptionValue).toFixed(2));
+
+    const paymentTotal = Number(dto.payments.reduce((sum, p) => sum + p.amount, 0).toFixed(2));
+    if (Math.abs(paymentTotal - netPayable) > MONEY_EPSILON) {
+      throw new BadRequestException(
+        `Payment total (${paymentTotal}) plus redeemed points value (${redemptionValue}) does not equal the invoice total (${grandTotal})`,
       );
     }
 
+    const cashPortion = dto.payments
+      .filter((p) => p.method === "cash")
+      .reduce((sum, p) => sum + p.amount, 0);
+    const changeDue =
+      dto.amountTendered !== undefined
+        ? Number(Math.max(0, dto.amountTendered - cashPortion).toFixed(2))
+        : 0;
+
     const order = await this.prisma.$transaction(async (tx) => {
+      // Create-inline-at-checkout: a phone lookup during POS found no match.
+      let customerId = dto.customerId;
+      if (!customerId && dto.newCustomer) {
+        const created = await tx.customer.create({
+          data: { name: dto.newCustomer.name, phone: dto.newCustomer.phone },
+        });
+        customerId = created.id;
+      }
+
+      let pointsEarned = 0;
+      if (customerId) {
+        if (redeemPoints > 0) {
+          // tx-scoped balance check — a customer created earlier in this same transaction
+          // isn't visible to CustomersService's separate connection until commit.
+          const balanceAgg = await tx.loyaltyTransaction.aggregate({
+            where: { customerId },
+            _sum: { pointsDelta: true },
+          });
+          const balance = balanceAgg._sum.pointsDelta ?? 0;
+          if (balance < redeemPoints) {
+            throw new BadRequestException(
+              `Customer has ${balance} points, cannot redeem ${redeemPoints}`,
+            );
+          }
+        }
+        // No points earned on the portion paid *with* points — avoids an earn/redeem loop.
+        pointsEarned = Math.floor(netPayable * Number(store.loyaltyPointsPerCurrency ?? 0));
+      }
+
       for (const line of lineData) {
         const onHand = await this.inventory.getStockOnHand(dto.storeId, line.variantId, tx);
         if (onHand < line.quantity) {
@@ -163,12 +219,16 @@ export class SalesService {
         data: {
           storeId: dto.storeId,
           invoiceNumber,
-          customerId: dto.customerId,
+          customerId,
           cashierId,
           subtotal,
           discountTotal,
           taxTotal,
           grandTotal,
+          pointsEarned,
+          pointsRedeemed: redeemPoints,
+          amountTendered: dto.amountTendered,
+          changeDue,
           status: "completed",
           lines: {
             create: lineData.map(({ productName: _productName, ...line }) => line),
@@ -199,6 +259,35 @@ export class SalesService {
         );
       }
 
+      if (customerId) {
+        if (pointsEarned > 0) {
+          await tx.loyaltyTransaction.create({
+            data: {
+              customerId,
+              storeId: dto.storeId,
+              type: "earn",
+              pointsDelta: pointsEarned,
+              referenceType: "sales_order",
+              referenceId: created.id,
+              performedById: cashierId,
+            },
+          });
+        }
+        if (redeemPoints > 0) {
+          await tx.loyaltyTransaction.create({
+            data: {
+              customerId,
+              storeId: dto.storeId,
+              type: "redeem",
+              pointsDelta: -redeemPoints,
+              referenceType: "sales_order",
+              referenceId: created.id,
+              performedById: cashierId,
+            },
+          });
+        }
+      }
+
       return created;
     });
 
@@ -210,7 +299,20 @@ export class SalesService {
       after: { invoiceNumber: order.invoiceNumber, grandTotal, lineCount: order.lines.length },
     });
 
-    return order;
+    // Loyalty snapshot for the receipt ("Current Loyalty Points" / "Current Tier") — computed
+    // fresh post-commit rather than tracked incrementally, same derive-don't-cache approach
+    // as everything else in this codebase.
+    let loyaltySnapshot: { pointsBalance: number; tier: string } | null = null;
+    if (order.customerId) {
+      const [pointsBalance, stats] = await Promise.all([
+        this.customers.getPointsBalance(order.customerId),
+        this.customers.computeStats(order.customerId),
+      ]);
+      const tier = await this.customers.computeTier(dto.storeId, stats.lifetimeSpending);
+      loyaltySnapshot = { pointsBalance, tier };
+    }
+
+    return { ...order, loyaltySnapshot };
   }
 
   /**
@@ -223,14 +325,18 @@ export class SalesService {
     const [variants, quantities] = await Promise.all([
       this.prisma.productVariant.findMany({
         where: { isActive: true, product: { isActive: true } },
-        include: { product: true, sizeValue: true, color: true },
+        include: { product: { include: { category: true } }, sizeValue: true, color: true },
       }),
       this.inventory.listQuantitiesOnHand(storeId),
     ]);
 
     return variants.map((v) => ({
       variantId: v.id,
+      productId: v.productId,
       productName: v.product.modelName,
+      imageUrl: v.product.imageUrl,
+      categoryId: v.product.categoryId,
+      categoryName: v.product.category.name,
       barcode: v.barcode,
       sizeLabel: `${v.sizeValue.standard} ${v.sizeValue.value}`,
       colorName: v.color.name,

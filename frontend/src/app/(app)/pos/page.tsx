@@ -2,16 +2,32 @@
 
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Loader2, Minus, Plus, Printer, ScanBarcode, ShoppingCart, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  Loader2,
+  Minus,
+  Package,
+  Plus,
+  Printer,
+  ScanBarcode,
+  Search,
+  ShoppingCart,
+  Trash2,
+  UserRound,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { useActiveStore } from "@/lib/store-context";
-import { useLocale } from "@/lib/i18n/locale-context";
+import { useLocale, type TranslationKey } from "@/lib/i18n/locale-context";
 import { checkout, getPosCatalog, type PosCatalogItem } from "@/lib/api/sales";
-import type { PaymentMethodType, SalesOrder } from "@/lib/api/types";
+import { getCustomerByPhone } from "@/lib/api/customers";
+import type { CustomerWithStats, PaymentMethodType, SalesOrder } from "@/lib/api/types";
 import { formatDateTime, formatMoney, toNumber } from "@/lib/format";
 import { PageHeader } from "@/components/layout/page-header";
 import { NoStoreSelected } from "@/components/no-store-selected";
+import { ReceiptView } from "@/components/receipt-view";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -30,6 +46,56 @@ import {
 interface CartLine {
   item: PosCatalogItem;
   quantity: number;
+}
+
+interface GroupedProduct {
+  productId: string;
+  productName: string;
+  imageUrl: string | null;
+  categoryId: string;
+  categoryName: string;
+  variants: PosCatalogItem[];
+  minPrice: number;
+  totalOnHand: number;
+}
+
+function groupByProduct(items: PosCatalogItem[]): GroupedProduct[] {
+  const map = new Map<string, GroupedProduct>();
+  for (const item of items) {
+    let g = map.get(item.productId);
+    if (!g) {
+      g = {
+        productId: item.productId,
+        productName: item.productName,
+        imageUrl: item.imageUrl,
+        categoryId: item.categoryId,
+        categoryName: item.categoryName,
+        variants: [],
+        minPrice: item.sellingPrice,
+        totalOnHand: 0,
+      };
+      map.set(item.productId, g);
+    }
+    g.variants.push(item);
+    g.minPrice = Math.min(g.minPrice, item.sellingPrice);
+    g.totalOnHand += item.quantityOnHand;
+  }
+  return Array.from(map.values());
+}
+
+type SelectedCustomer =
+  | { kind: "existing"; customer: CustomerWithStats }
+  | { kind: "new"; name: string; phone: string }
+  | null;
+
+function computeTierLocal(
+  lifetimeSpending: number,
+  thresholds: { silver: number; gold: number; platinum: number },
+): "bronze" | "silver" | "gold" | "platinum" {
+  if (lifetimeSpending >= thresholds.platinum) return "platinum";
+  if (lifetimeSpending >= thresholds.gold) return "gold";
+  if (lifetimeSpending >= thresholds.silver) return "silver";
+  return "bronze";
 }
 
 export default function PosPage() {
@@ -53,21 +119,57 @@ export default function PosPage() {
     enabled: !!activeStoreId,
   });
   const items = React.useMemo(() => catalog ?? [], [catalog]);
+  const groups = React.useMemo(() => groupByProduct(items), [items]);
+  const categories = React.useMemo(() => {
+    const map = new Map<string, string>();
+    for (const item of items) map.set(item.categoryId, item.categoryName);
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  }, [items]);
 
   const [query, setQuery] = React.useState("");
+  const [selectedCategory, setSelectedCategory] = React.useState<string>("all");
   const [cart, setCart] = React.useState<CartLine[]>([]);
   const [discountPct, setDiscountPct] = React.useState(0);
   const [paymentMethod, setPaymentMethod] = React.useState<PaymentMethodType>("cash");
   const [receiptOpen, setReceiptOpen] = React.useState(false);
   const [completedOrder, setCompletedOrder] = React.useState<SalesOrder | null>(null);
+  const [pickerProduct, setPickerProduct] = React.useState<GroupedProduct | null>(null);
 
-  const results = React.useMemo(() => {
+  // Customer / loyalty (FR: search-by-phone at checkout, create-inline if not found).
+  const [phoneQuery, setPhoneQuery] = React.useState("");
+  const [debouncedPhone, setDebouncedPhone] = React.useState("");
+  const [newCustomerName, setNewCustomerName] = React.useState("");
+  const [selectedCustomer, setSelectedCustomer] = React.useState<SelectedCustomer>(null);
+  const [redeemPoints, setRedeemPoints] = React.useState(0);
+  const [amountTendered, setAmountTendered] = React.useState("");
+
+  React.useEffect(() => {
+    const id = setTimeout(() => setDebouncedPhone(phoneQuery.trim()), 350);
+    return () => clearTimeout(id);
+  }, [phoneQuery]);
+
+  const { data: foundCustomer, isFetching: customerLookupLoading } = useQuery({
+    queryKey: ["customer-by-phone", debouncedPhone],
+    queryFn: () => getCustomerByPhone(debouncedPhone),
+    enabled: debouncedPhone.length >= 4 && !selectedCustomer,
+  });
+
+  const filteredGroups = React.useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return [];
-    return items
-      .filter((v) => [v.productName, v.colorName, v.sizeLabel, v.barcode].some((f) => f.toLowerCase().includes(q)))
-      .slice(0, 20);
-  }, [items, query]);
+    return groups.filter((g) => {
+      if (selectedCategory !== "all" && g.categoryId !== selectedCategory) return false;
+      if (!q) return true;
+      return (
+        g.productName.toLowerCase().includes(q) ||
+        g.variants.some(
+          (v) =>
+            v.barcode.toLowerCase().includes(q) ||
+            v.colorName.toLowerCase().includes(q) ||
+            v.sizeLabel.toLowerCase().includes(q),
+        )
+      );
+    });
+  }, [groups, selectedCategory, query]);
 
   function addToCart(item: PosCatalogItem) {
     setCart((prev) => {
@@ -88,9 +190,14 @@ export default function PosPage() {
     if (exact) {
       addToCart(exact);
       setQuery("");
-    } else if (results.length === 1) {
-      addToCart(results[0]);
-      setQuery("");
+    }
+  }
+
+  function handleCardClick(group: GroupedProduct) {
+    if (group.variants.length === 1) {
+      addToCart(group.variants[0]);
+    } else {
+      setPickerProduct(group);
     }
   }
 
@@ -106,26 +213,59 @@ export default function PosPage() {
     setCart((prev) => prev.filter((l) => l.item.variantId !== variantId));
   }
 
+  function resetCustomer() {
+    setSelectedCustomer(null);
+    setPhoneQuery("");
+    setNewCustomerName("");
+    setRedeemPoints(0);
+  }
+
   const subtotal = cart.reduce((sum, l) => sum + l.item.sellingPrice * l.quantity, 0);
   const discountLimit = toNumber(activeStore?.discountApprovalLimitPct ?? 10);
   const discountAmount = subtotal * (discountPct / 100);
   const vatRate = toNumber(activeStore?.vatRate ?? 14);
   const taxableAmount = subtotal - discountAmount;
   const vatAmount = taxableAmount * (vatRate / 100);
-  const total = taxableAmount + vatAmount;
+  const grandTotal = taxableAmount + vatAmount;
   const needsApproval = discountPct > discountLimit;
   const hasOversell = cart.some((l) => l.quantity > l.item.quantityOnHand);
+
+  const pointValue = toNumber(activeStore?.loyaltyPointValue ?? 1) || 1;
+  const customerPointsBalance = selectedCustomer?.kind === "existing" ? selectedCustomer.customer.pointsBalance : 0;
+  const maxRedeemable = Math.max(0, Math.min(customerPointsBalance, Math.floor(grandTotal / pointValue)));
+  React.useEffect(() => {
+    if (redeemPoints > maxRedeemable) setRedeemPoints(maxRedeemable);
+  }, [maxRedeemable, redeemPoints]);
+  const redemptionValue = redeemPoints * pointValue;
+  const netPayable = Math.max(0, grandTotal - redemptionValue);
+
+  const tenderedNum = amountTendered === "" ? netPayable : Number(amountTendered);
+  const changeDue = paymentMethod === "cash" ? Math.max(0, tenderedNum - netPayable) : 0;
+  const tenderInsufficient = paymentMethod === "cash" && amountTendered !== "" && tenderedNum < netPayable;
+
+  const thresholds = {
+    silver: toNumber(activeStore?.loyaltySilverThreshold ?? 5000),
+    gold: toNumber(activeStore?.loyaltyGoldThreshold ?? 15000),
+    platinum: toNumber(activeStore?.loyaltyPlatinumThreshold ?? 40000),
+  };
 
   const checkoutMutation = useMutation({
     mutationFn: () =>
       checkout({
         storeId: activeStoreId!,
+        customerId: selectedCustomer?.kind === "existing" ? selectedCustomer.customer.id : undefined,
+        newCustomer:
+          selectedCustomer?.kind === "new"
+            ? { name: selectedCustomer.name, phone: selectedCustomer.phone || undefined }
+            : undefined,
         lines: cart.map((l) => ({
           variantId: l.item.variantId,
           quantity: l.quantity,
           discountAmount: Number((l.item.sellingPrice * (discountPct / 100)).toFixed(2)),
         })),
-        payments: [{ method: paymentMethod, amount: Number(total.toFixed(2)) }],
+        payments: [{ method: paymentMethod, amount: Number(netPayable.toFixed(2)) }],
+        redeemPoints: redeemPoints > 0 ? redeemPoints : undefined,
+        amountTendered: paymentMethod === "cash" ? Number(tenderedNum.toFixed(2)) : undefined,
       }),
     onSuccess: (order) => {
       queryClient.invalidateQueries({ queryKey: ["pos-catalog", activeStoreId] });
@@ -133,13 +273,12 @@ export default function PosPage() {
       setReceiptOpen(true);
       setCart([]);
       setDiscountPct(0);
+      setAmountTendered("");
+      resetCustomer();
       toast.success(t("pos.saleCompleted", { invoice: order.invoiceNumber }));
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : t("pos.checkoutFailed")),
   });
-
-  const paymentMethodLabel = (method: PaymentMethodType) =>
-    PAYMENT_METHODS.find((m) => m.value === method)?.label ?? method;
 
   if (!storeLoading && !activeStore) {
     return (
@@ -170,46 +309,76 @@ export default function PosPage() {
             </div>
           </form>
 
-          {query && (
-            <Card>
-              <CardContent className="p-2">
-                {results.length === 0 ? (
-                  <p className="py-6 text-center text-sm text-muted-foreground">{t("pos.noMatches")}</p>
-                ) : (
-                  <ScrollArea className="h-72">
-                    <div className="space-y-1">
-                      {results.map((v) => (
-                        <button
-                          key={v.variantId}
-                          type="button"
-                          onClick={() => {
-                            addToCart(v);
-                            setQuery("");
-                          }}
-                          className="flex w-full items-center justify-between rounded-md px-3 py-2 text-start text-sm hover:bg-accent"
-                        >
-                          <div>
-                            <p className="font-medium">{v.productName}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {v.colorName} · {v.sizeLabel} · {v.barcode}
-                            </p>
-                          </div>
-                          <div className="text-end">
-                            <p className="font-medium">{formatMoney(v.sellingPrice, activeStore?.currency)}</p>
-                            <p
-                              className={`text-xs ${v.quantityOnHand <= 0 ? "text-destructive" : "text-muted-foreground"}`}
+          <div className="flex flex-wrap gap-1.5">
+            <Button
+              type="button"
+              size="sm"
+              variant={selectedCategory === "all" ? "default" : "outline"}
+              onClick={() => setSelectedCategory("all")}
+            >
+              {t("pos.categoryAll")}
+            </Button>
+            {categories.map((c) => (
+              <Button
+                key={c.id}
+                type="button"
+                size="sm"
+                variant={selectedCategory === c.id ? "default" : "outline"}
+                onClick={() => setSelectedCategory(c.id)}
+              >
+                {c.name}
+              </Button>
+            ))}
+          </div>
+
+          <Card>
+            <CardContent className="p-3">
+              {filteredGroups.length === 0 ? (
+                <p className="py-10 text-center text-sm text-muted-foreground">{t("pos.gridEmpty")}</p>
+              ) : (
+                <ScrollArea className="h-[420px]">
+                  <div className="grid grid-cols-2 gap-3 pe-3 sm:grid-cols-3 xl:grid-cols-4">
+                    {filteredGroups.map((g) => (
+                      <button
+                        key={g.productId}
+                        type="button"
+                        onClick={() => handleCardClick(g)}
+                        className="group flex flex-col overflow-hidden rounded-lg border text-start transition hover:border-primary hover:shadow-sm"
+                      >
+                        <div className="aspect-square w-full overflow-hidden bg-muted">
+                          {g.imageUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={g.imageUrl}
+                              alt={g.productName}
+                              className="size-full object-cover transition group-hover:scale-105"
+                            />
+                          ) : (
+                            <div className="flex size-full items-center justify-center">
+                              <Package className="size-8 text-muted-foreground/40" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="space-y-0.5 p-2">
+                          <p className="truncate text-xs font-medium">{g.productName}</p>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold">
+                              {formatMoney(g.minPrice, activeStore?.currency)}
+                            </span>
+                            <span
+                              className={`text-[11px] ${g.totalOnHand <= 0 ? "text-destructive" : "text-muted-foreground"}`}
                             >
-                              {v.quantityOnHand} {t("pos.onHand")}
-                            </p>
+                              {g.totalOnHand <= 0 ? t("pos.outOfStock") : `${g.totalOnHand} ${t("pos.onHand")}`}
+                            </span>
                           </div>
-                        </button>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                )}
-              </CardContent>
-            </Card>
-          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </ScrollArea>
+              )}
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader>
@@ -278,7 +447,116 @@ export default function PosPage() {
           </Card>
         </div>
 
-        <div>
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">{t("pos.customer")}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {selectedCustomer ? (
+                <div className="flex items-center justify-between rounded-md border p-2.5">
+                  <div className="flex items-center gap-2">
+                    <UserRound className="size-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm font-medium">
+                        {selectedCustomer.kind === "existing" ? selectedCustomer.customer.name : selectedCustomer.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {selectedCustomer.kind === "existing"
+                          ? `${selectedCustomer.customer.phone ?? ""} · ${selectedCustomer.customer.pointsBalance} pts · ${t(
+                              `loyaltyTiers.${computeTierLocal(selectedCustomer.customer.lifetimeSpending, thresholds)}` as TranslationKey,
+                            )}`
+                          : selectedCustomer.phone}
+                      </p>
+                    </div>
+                  </div>
+                  <Button variant="ghost" size="icon" className="size-7" onClick={resetCustomer}>
+                    <X className="size-3.5" />
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <div className="relative">
+                    <Search className="absolute top-1/2 start-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={phoneQuery}
+                      onChange={(e) => setPhoneQuery(e.target.value)}
+                      placeholder={t("pos.customerPhonePlaceholder")}
+                      className="ps-9"
+                    />
+                  </div>
+                  {debouncedPhone.length >= 4 && (
+                    <div className="rounded-md border p-2.5 text-sm">
+                      {customerLookupLoading ? (
+                        <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                      ) : foundCustomer ? (
+                        <button
+                          type="button"
+                          className="flex w-full items-center justify-between text-start hover:opacity-80"
+                          onClick={() => setSelectedCustomer({ kind: "existing", customer: foundCustomer })}
+                        >
+                          <span>
+                            {t("pos.customerFound", {
+                              name: foundCustomer.name,
+                              points: foundCustomer.pointsBalance,
+                              tier: t(
+                                `loyaltyTiers.${computeTierLocal(foundCustomer.lifetimeSpending, thresholds)}` as TranslationKey,
+                              ),
+                            })}
+                          </span>
+                        </button>
+                      ) : (
+                        <div className="space-y-2">
+                          <p className="text-muted-foreground">{t("pos.customerNotFound")}</p>
+                          <Input
+                            value={newCustomerName}
+                            onChange={(e) => setNewCustomerName(e.target.value)}
+                            placeholder={t("pos.newCustomerNamePlaceholder")}
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={!newCustomerName.trim()}
+                            onClick={() =>
+                              setSelectedCustomer({ kind: "new", name: newCustomerName.trim(), phone: debouncedPhone })
+                            }
+                          >
+                            {t("pos.createCustomerInline", { name: newCustomerName.trim() || "…" })}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {selectedCustomer?.kind === "existing" && maxRedeemable > 0 && (
+                <div className="space-y-1.5 border-t pt-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">{t("pos.redeemPoints")}</span>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={maxRedeemable}
+                      value={redeemPoints}
+                      onChange={(e) =>
+                        setRedeemPoints(Math.max(0, Math.min(maxRedeemable, Number(e.target.value))))
+                      }
+                      className="h-7 w-20 text-end"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {t("pos.pointsAvailable", {
+                      points: maxRedeemable,
+                      value: formatMoney(maxRedeemable * pointValue, activeStore?.currency),
+                    })}
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="text-base">{t("pos.summary")}</CardTitle>
@@ -318,8 +596,21 @@ export default function PosPage() {
 
               <div className="flex justify-between text-base font-semibold">
                 <span>{t("pos.total")}</span>
-                <span className="tabular-nums">{formatMoney(total, activeStore?.currency)}</span>
+                <span className="tabular-nums">{formatMoney(grandTotal, activeStore?.currency)}</span>
               </div>
+
+              {redeemPoints > 0 && (
+                <>
+                  <div className="flex justify-between text-sm text-muted-foreground">
+                    <span>{t("pos.loyalty")}</span>
+                    <span>-{formatMoney(redemptionValue, activeStore?.currency)}</span>
+                  </div>
+                  <div className="flex justify-between text-base font-semibold">
+                    <span>{t("receipt.amountPaid")}</span>
+                    <span className="tabular-nums">{formatMoney(netPayable, activeStore?.currency)}</span>
+                  </div>
+                </>
+              )}
 
               <div className="space-y-1.5">
                 <span className="text-sm text-muted-foreground">{t("pos.paymentMethod")}</span>
@@ -340,6 +631,36 @@ export default function PosPage() {
                 </Select>
               </div>
 
+              {paymentMethod === "cash" && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">{t("pos.tender")}</span>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={amountTendered}
+                      onChange={(e) => setAmountTendered(e.target.value)}
+                      placeholder={t("pos.tenderPlaceholder")}
+                      className="h-7 w-28 text-end"
+                    />
+                  </div>
+                  {tenderInsufficient ? (
+                    <p className="flex items-center gap-1 text-xs text-destructive">
+                      <AlertTriangle className="size-3" />
+                      {t("pos.insufficientTender")}
+                    </p>
+                  ) : (
+                    changeDue > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">{t("pos.changeDue")}</span>
+                        <span className="tabular-nums">{formatMoney(changeDue, activeStore?.currency)}</span>
+                      </div>
+                    )
+                  )}
+                </div>
+              )}
+
               {hasOversell && (
                 <p className="flex items-center gap-1 text-xs text-destructive">
                   <AlertTriangle className="size-3" />
@@ -350,7 +671,7 @@ export default function PosPage() {
               <Button
                 className="w-full"
                 size="lg"
-                disabled={cart.length === 0 || hasOversell || checkoutMutation.isPending}
+                disabled={cart.length === 0 || hasOversell || tenderInsufficient || checkoutMutation.isPending}
                 onClick={() => checkoutMutation.mutate()}
               >
                 {checkoutMutation.isPending && <Loader2 className="size-4 animate-spin" />}
@@ -361,6 +682,36 @@ export default function PosPage() {
         </div>
       </div>
 
+      <Dialog open={!!pickerProduct} onOpenChange={(open) => !open && setPickerProduct(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("pos.selectVariantTitle", { product: pickerProduct?.productName ?? "" })}</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {pickerProduct?.variants.map((v) => (
+              <button
+                key={v.variantId}
+                type="button"
+                disabled={v.quantityOnHand <= 0}
+                onClick={() => {
+                  addToCart(v);
+                  setPickerProduct(null);
+                }}
+                className="flex flex-col items-start gap-1 rounded-md border p-2.5 text-start text-sm hover:bg-accent disabled:opacity-40"
+              >
+                <span className="font-medium">
+                  {v.colorName} · {v.sizeLabel}
+                </span>
+                <span className="tabular-nums">{formatMoney(v.sellingPrice, activeStore?.currency)}</span>
+                <Badge variant={v.quantityOnHand <= 0 ? "destructive" : "outline"} className="text-[10px]">
+                  {v.quantityOnHand <= 0 ? t("pos.outOfStock") : `${v.quantityOnHand} ${t("pos.onHand")}`}
+                </Badge>
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={receiptOpen} onOpenChange={setReceiptOpen}>
         <DialogContent>
           <DialogHeader>
@@ -369,35 +720,7 @@ export default function PosPage() {
               {completedOrder && formatDateTime(completedOrder.orderDate)} · {activeStore?.name}
             </DialogDescription>
           </DialogHeader>
-          {completedOrder && (
-            <div className="space-y-2 text-sm">
-              {completedOrder.lines?.map((line) => (
-                <div key={line.id} className="flex justify-between">
-                  <span>
-                    {line.variant?.product?.modelName ?? "Item"} × {line.quantity}
-                  </span>
-                  <span className="tabular-nums">{formatMoney(line.netPrice, activeStore?.currency)}</span>
-                </div>
-              ))}
-              <Separator />
-              <div className="flex justify-between text-muted-foreground">
-                <span>{t("pos.discount")}</span>
-                <span>-{formatMoney(completedOrder.discountTotal, activeStore?.currency)}</span>
-              </div>
-              <div className="flex justify-between text-muted-foreground">
-                <span>{t("pos.vat")}</span>
-                <span>{formatMoney(completedOrder.taxTotal, activeStore?.currency)}</span>
-              </div>
-              <div className="flex justify-between text-base font-semibold">
-                <span>{t("pos.total")}</span>
-                <span>{formatMoney(completedOrder.grandTotal, activeStore?.currency)}</span>
-              </div>
-              <div className="flex justify-between text-muted-foreground">
-                <span>{t("pos.paidVia")}</span>
-                <span>{completedOrder.payments?.map((p) => paymentMethodLabel(p.method)).join(", ")}</span>
-              </div>
-            </div>
-          )}
+          {completedOrder && <ReceiptView order={completedOrder} />}
           <DialogFooter>
             <Button variant="outline" onClick={() => window.print()}>
               <Printer className="size-4" />

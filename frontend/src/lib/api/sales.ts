@@ -13,11 +13,19 @@ export interface CheckoutPaymentInput {
   referenceNo?: string;
 }
 
+export interface NewCustomerInput {
+  name: string;
+  phone?: string;
+}
+
 export interface CheckoutInput {
   storeId: string;
   customerId?: string;
+  newCustomer?: NewCustomerInput;
   lines: CheckoutLineInput[];
   payments: CheckoutPaymentInput[];
+  redeemPoints?: number;
+  amountTendered?: number;
 }
 
 export function checkout(input: CheckoutInput) {
@@ -35,7 +43,11 @@ export function getSale(id: string) {
 /** Cost-free sellable-items view for the POS UI — never exposes cost, see SalesService.getPosCatalog. */
 export interface PosCatalogItem {
   variantId: string;
+  productId: string;
   productName: string;
+  imageUrl: string | null;
+  categoryId: string;
+  categoryName: string;
   barcode: string;
   sizeLabel: string;
   colorName: string;

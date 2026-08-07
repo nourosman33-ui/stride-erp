@@ -6,6 +6,7 @@ import { CurrentUser, AuthenticatedUser } from "../../common/decorators/current-
 import { ProductsService } from "./products.service";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { CreateVariantDto } from "./dto/create-variant.dto";
+import { QuickAddProductDto } from "./dto/quick-add-product.dto";
 import { UpdatePriceDto } from "./dto/update-price.dto";
 
 @Controller("products")
@@ -17,6 +18,16 @@ export class ProductsController {
   @Roles("owner", "manager")
   create(@Body() dto: CreateProductDto) {
     return this.productsService.create(dto);
+  }
+
+  /**
+   * Product + all size×color variants + opening stock in one transaction.
+   * Registered before ":id" routes so "quick-add" isn't captured as an id.
+   */
+  @Post("quick-add")
+  @Roles("owner", "manager", "inventory_clerk")
+  quickAdd(@Body() dto: QuickAddProductDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.productsService.quickAdd(dto, user.userId);
   }
 
   // Exposes cost prices — never available to cashiers (POS uses GET /sales/pos-catalog instead).

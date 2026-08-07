@@ -13,6 +13,7 @@ import { createProduct, listCategories, listGenders, listProductTypes, listProdu
 import { formatMoney } from "@/lib/format";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { PageHeader } from "@/components/layout/page-header";
+import { QuickAddProductDialog } from "@/components/quick-add-product-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -87,7 +88,7 @@ function NewProductDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>
+        <Button variant="outline">
           <Plus className="size-4" />
           {t("products.newProduct")}
         </Button>
@@ -269,7 +270,12 @@ export default function ProductsPage() {
       <PageHeader
         title={t("products.title")}
         description={t("products.description")}
-        actions={<NewProductDialog />}
+        actions={
+          <>
+            <NewProductDialog />
+            <QuickAddProductDialog />
+          </>
+        }
       />
 
       <div className="relative max-w-sm">

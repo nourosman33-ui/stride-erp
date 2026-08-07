@@ -43,6 +43,16 @@ export class SalePaymentInputDto {
   referenceNo?: string;
 }
 
+/** Create-a-customer-inline-at-checkout — used when the phone lookup found no match. */
+export class NewCustomerInputDto {
+  @IsString()
+  name: string;
+
+  @IsOptional()
+  @IsString()
+  phone?: string;
+}
+
 export class CreateSaleDto {
   @IsUUID()
   storeId: string;
@@ -51,16 +61,36 @@ export class CreateSaleDto {
   @IsUUID()
   customerId?: string;
 
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => NewCustomerInputDto)
+  newCustomer?: NewCustomerInputDto;
+
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => SaleLineInputDto)
   lines: SaleLineInputDto[];
 
-  /** FR-SAL-3: multiple rows support split payments; SUM(amount) must equal grand_total. */
+  /**
+   * FR-SAL-3: multiple rows support split payments; SUM(amount) + (redeemPoints value)
+   * must equal grand_total.
+   */
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => SalePaymentInputDto)
   payments: SalePaymentInputDto[];
+
+  /** Loyalty points to redeem against this sale — requires an attached customer with sufficient balance. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  redeemPoints?: number;
+
+  /** Cash handed over by the customer, for change calculation/display on the receipt. */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  amountTendered?: number;
 }

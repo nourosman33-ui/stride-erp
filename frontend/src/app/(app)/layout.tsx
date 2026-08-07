@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 import { isCashierOnly, isPathAllowedForCashier } from "@/lib/access-control";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppTopbar } from "@/components/layout/app-topbar";
+import { PageTransition } from "@/components/layout/page-transition";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -41,7 +42,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <AppSidebar />
       <div className="flex min-h-screen flex-1 flex-col">
         <AppTopbar />
-        <main className="flex-1 overflow-x-hidden bg-muted/20 p-4 md:p-6">{children}</main>
+        <main className="flex-1 overflow-x-hidden bg-muted/20 p-4 md:p-6">
+          <PageTransition>{children}</PageTransition>
+        </main>
       </div>
     </div>
   );

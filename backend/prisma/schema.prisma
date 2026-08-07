@@ -26,6 +26,7 @@ model Store {
   id                       String    @id @default(uuid())
   name                     String
   address                  String?
+  phone                    String?
   sizeSqm                  Decimal?  @map("size_sqm") @db.Decimal(8, 2)
   frontageM                Decimal?  @map("frontage_m") @db.Decimal(8, 2)
   openingDate              DateTime? @map("opening_date") @db.Date
@@ -44,11 +45,29 @@ model Store {
   createdAt                DateTime  @default(now()) @map("created_at")
   updatedAt                DateTime  @updatedAt @map("updated_at")
 
+  // Phase 3 — Settings: branding, receipt, returns, loyalty program configuration.
+  logoUrl                  String? @map("logo_url")
+  taxNumber                String? @map("tax_number")
+  receiptFooterLine1       String? @map("receipt_footer_line1")
+  receiptFooterLine2       String? @map("receipt_footer_line2")
+  returnPeriodDays         Int     @default(14) @map("return_period_days")
+  // Points earned per 1 unit of store currency spent (net of discount, incl. tax) — e.g.
+  // 0.10 = 1 point per 10 EGP. Currency value of a single redeemed point.
+  loyaltyPointsPerCurrency Decimal @default(0.10) @map("loyalty_points_per_currency") @db.Decimal(6, 4)
+  loyaltyPointValue        Decimal @default(1.00) @map("loyalty_point_value") @db.Decimal(6, 4)
+  // Lifetime-spend thresholds for tier assignment (derived at read time, never stored on
+  // the customer — same "compute, don't cache" principle as stock-on-hand).
+  loyaltySilverThreshold   Decimal @default(5000.00) @map("loyalty_silver_threshold") @db.Decimal(12, 2)
+  loyaltyGoldThreshold     Decimal @default(15000.00) @map("loyalty_gold_threshold") @db.Decimal(12, 2)
+  loyaltyPlatinumThreshold Decimal @default(40000.00) @map("loyalty_platinum_threshold") @db.Decimal(12, 2)
+
   userRoles           UserRole[]
   purchaseOrders      PurchaseOrder[]
   stockLedgerEntries  StockLedgerEntry[]
   movementStatusRule  MovementStatusRule?
   salesOrders         SalesOrder[]
+  loyaltyTransactions LoyaltyTransaction[]
+  aiConversations     AiConversation[]
 
   @@map("store")
 }
@@ -63,15 +82,17 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  userRoles          UserRole[]
-  auditLogs          AuditLog[]
-  priceChangesMade   PriceHistory[]      @relation("PriceChangedBy")
-  poApproved         PurchaseOrder[]     @relation("PoApprovedBy")
-  poCreated          PurchaseOrder[]     @relation("PoCreatedBy")
-  goodsReceipts      GoodsReceipt[]      @relation("ReceivedBy")
-  stockLedgerEntries StockLedgerEntry[]  @relation("StockPerformedBy")
-  purchaseReturns    PurchaseReturn[]    @relation("PurchaseReturnCreatedBy")
-  salesOrders        SalesOrder[]        @relation("SalesCashier")
+  userRoles                    UserRole[]
+  auditLogs                    AuditLog[]
+  priceChangesMade             PriceHistory[]       @relation("PriceChangedBy")
+  poApproved                   PurchaseOrder[]      @relation("PoApprovedBy")
+  poCreated                    PurchaseOrder[]      @relation("PoCreatedBy")
+  goodsReceipts                GoodsReceipt[]       @relation("ReceivedBy")
+  stockLedgerEntries           StockLedgerEntry[]   @relation("StockPerformedBy")
+  purchaseReturns              PurchaseReturn[]     @relation("PurchaseReturnCreatedBy")
+  salesOrders                  SalesOrder[]         @relation("SalesCashier")
+  loyaltyTransactionsPerformed LoyaltyTransaction[] @relation("LoyaltyPerformedBy")
+  aiConversations              AiConversation[]     @relation("AiConversationOwner")
 
   @@map("app_user")
 }
@@ -154,10 +175,10 @@ model ProductType {
 }
 
 model SizeValue {
-  id        String   @id @default(uuid())
+  id        String @id @default(uuid())
   standard  String // EU | UK | US
   value     String // "42"
-  sortOrder Int      @default(0) @map("sort_order")
+  sortOrder Int    @default(0) @map("sort_order")
 
   variants ProductVariant[]
 
@@ -166,8 +187,8 @@ model SizeValue {
 }
 
 model Color {
-  id      String @id @default(uuid())
-  name    String @unique
+  id      String  @id @default(uuid())
+  name    String  @unique
   hexCode String? @map("hex_code")
 
   variants ProductVariant[]
@@ -214,6 +235,7 @@ model ProductVariant {
   sizeValueId          String   @map("size_value_id")
   colorId              String   @map("color_id")
   barcode              String   @unique
+  sku                  String?  @unique
   costPriceOverride    Decimal? @map("cost_price_override") @db.Decimal(12, 2)
   sellingPriceOverride Decimal? @map("selling_price_override") @db.Decimal(12, 2)
   reorderPoint         Int      @default(0) @map("reorder_point")
@@ -290,12 +312,12 @@ model Supplier {
 }
 
 model ProductSupplier {
-  id                String   @id @default(uuid())
-  productId         String   @map("product_id")
-  supplierId        String   @map("supplier_id")
-  supplierCostPrice Decimal  @map("supplier_cost_price") @db.Decimal(12, 2)
-  piecesPerCarton   Int?     @map("pieces_per_carton")
-  isPreferred       Boolean  @default(false) @map("is_preferred")
+  id                String  @id @default(uuid())
+  productId         String  @map("product_id")
+  supplierId        String  @map("supplier_id")
+  supplierCostPrice Decimal @map("supplier_cost_price") @db.Decimal(12, 2)
+  piecesPerCarton   Int?    @map("pieces_per_carton")
+  isPreferred       Boolean @default(false) @map("is_preferred")
 
   product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
@@ -373,7 +395,7 @@ model PurchaseOrderLine {
   purchaseOrderId     String  @map("purchase_order_id")
   variantId           String  @map("variant_id")
   quantityOrdered     Int     @map("quantity_ordered")
-  cartons              Int?
+  cartons             Int?
   piecesPerCarton     Int?    @map("pieces_per_carton")
   costPrice           Decimal @map("cost_price") @db.Decimal(12, 2)
   sellingPriceAtOrder Decimal @map("selling_price_at_order") @db.Decimal(12, 2)
@@ -419,8 +441,8 @@ model GoodsReceiptLine {
   quantityExpected    Int     @map("quantity_expected")
   discrepancyReason   String? @map("discrepancy_reason")
 
-  goodsReceipt       GoodsReceipt      @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
-  purchaseOrderLine  PurchaseOrderLine @relation(fields: [purchaseOrderLineId], references: [id])
+  goodsReceipt       GoodsReceipt       @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
+  purchaseOrderLine  PurchaseOrderLine  @relation(fields: [purchaseOrderLineId], references: [id])
   stockLedgerEntries StockLedgerEntry[]
 
   @@index([goodsReceiptId])
@@ -438,8 +460,8 @@ model PurchaseReturn {
 
   purchaseOrder      PurchaseOrder?     @relation(fields: [purchaseOrderId], references: [id])
   variant            ProductVariant     @relation(fields: [variantId], references: [id])
-  createdBy           User              @relation("PurchaseReturnCreatedBy", fields: [createdById], references: [id])
-  stockLedgerEntries  StockLedgerEntry[]
+  createdBy          User               @relation("PurchaseReturnCreatedBy", fields: [createdById], references: [id])
+  stockLedgerEntries StockLedgerEntry[]
 
   @@index([variantId])
   @@map("purchase_return")
@@ -513,13 +535,18 @@ model MovementStatusRule {
 // ======================================================================
 
 model Customer {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   name      String
-  phone     String?
+  phone     String?   @unique
+  email     String?
+  gender    String? // free-text (male/female/other) — not the catalog Gender lookup, which is product-facing
+  birthDate DateTime? @map("birth_date") @db.Date
   notes     String?
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
 
-  salesOrders SalesOrder[]
+  salesOrders         SalesOrder[]
+  loyaltyTransactions LoyaltyTransaction[]
 
   @@map("customer")
 }
@@ -539,21 +566,30 @@ enum PaymentMethodType {
 }
 
 model SalesOrder {
-  id            String           @id @default(uuid())
-  storeId       String           @map("store_id")
-  invoiceNumber String           @unique @map("invoice_number")
-  customerId    String?          @map("customer_id")
-  cashierId     String           @map("cashier_id")
-  orderDate     DateTime         @default(now()) @map("order_date")
+  id             String           @id @default(uuid())
+  storeId        String           @map("store_id")
+  invoiceNumber  String           @unique @map("invoice_number")
+  customerId     String?          @map("customer_id")
+  cashierId      String           @map("cashier_id")
+  orderDate      DateTime         @default(now()) @map("order_date")
   // subtotal/discountTotal/taxTotal/grandTotal computed in the service layer at write
   // time and persisted, not DB-generated — same reasoning as purchase_order_line's
   // lineTotal/expectedProfit (see file header note).
-  subtotal      Decimal          @db.Decimal(12, 2)
-  discountTotal Decimal          @default(0) @map("discount_total") @db.Decimal(12, 2)
-  taxTotal      Decimal          @default(0) @map("tax_total") @db.Decimal(12, 2)
-  grandTotal    Decimal          @map("grand_total") @db.Decimal(12, 2)
-  status        SalesOrderStatus @default(completed)
-  createdAt     DateTime         @default(now()) @map("created_at")
+  subtotal       Decimal          @db.Decimal(12, 2)
+  discountTotal  Decimal          @default(0) @map("discount_total") @db.Decimal(12, 2)
+  taxTotal       Decimal          @default(0) @map("tax_total") @db.Decimal(12, 2)
+  grandTotal     Decimal          @map("grand_total") @db.Decimal(12, 2)
+  // Loyalty (FR-CRM/loyalty): snapshotted at sale time, not recomputed later — a change to
+  // the store's points-per-currency rate must never rewrite history (same reasoning as
+  // purchase_order_line.sellingPriceAtOrder).
+  pointsEarned   Int              @default(0) @map("points_earned")
+  pointsRedeemed Int              @default(0) @map("points_redeemed")
+  // Cash tendered/change — null for non-cash methods where the paid amount always equals
+  // grand_total exactly.
+  amountTendered Decimal?         @map("amount_tendered") @db.Decimal(12, 2)
+  changeDue      Decimal          @default(0) @map("change_due") @db.Decimal(12, 2)
+  status         SalesOrderStatus @default(completed)
+  createdAt      DateTime         @default(now()) @map("created_at")
 
   store    Store     @relation(fields: [storeId], references: [id])
   customer Customer? @relation(fields: [customerId], references: [id])
@@ -595,4 +631,84 @@ model Payment {
 
   @@index([orderId])
   @@map("payment")
+}
+
+// ======================================================================
+// Phase 3 — Loyalty program
+// (Append-only ledger, same pattern as stock_ledger_entry: a customer's points balance
+// is always SUM(points_delta), never a mutable counter on Customer. Tier is likewise
+// derived at read time from lifetime spend against the Store's configured thresholds —
+// see CustomersService.)
+// ======================================================================
+
+enum LoyaltyTransactionType {
+  earn
+  redeem
+  adjustment
+}
+
+model LoyaltyTransaction {
+  id            String                 @id @default(uuid())
+  customerId    String                 @map("customer_id")
+  storeId       String                 @map("store_id")
+  type          LoyaltyTransactionType
+  pointsDelta   Int                    @map("points_delta") // signed: + earn/adjustment-up, - redeem/adjustment-down
+  referenceType String?                @map("reference_type") // sales_order | manual
+  referenceId   String?                @map("reference_id")
+  performedById String?                @map("performed_by")
+  note          String?
+  createdAt     DateTime               @default(now()) @map("created_at")
+
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  store       Store    @relation(fields: [storeId], references: [id])
+  performedBy User?    @relation("LoyaltyPerformedBy", fields: [performedById], references: [id])
+
+  @@index([customerId])
+  @@index([storeId])
+  @@map("loyalty_transaction")
+}
+
+// ======================================================================
+// Phase 3 — Owner AI Assistant
+// (Owner-only, see AiController's @Roles guard. AiToolsService is the only thing that
+// touches business data — the provider layer, mock today, real OpenAI later, never
+// queries Prisma directly. See AiModule header comment for the provider-swap contract.)
+// ======================================================================
+
+enum AiMessageRole {
+  user
+  assistant
+  system
+}
+
+model AiConversation {
+  id        String   @id @default(uuid())
+  ownerId   String   @map("owner_id")
+  storeId   String?  @map("store_id")
+  title     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  owner    User        @relation("AiConversationOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  store    Store?      @relation(fields: [storeId], references: [id])
+  messages AiMessage[]
+
+  @@index([ownerId])
+  @@map("ai_conversation")
+}
+
+model AiMessage {
+  id             String        @id @default(uuid())
+  conversationId String        @map("conversation_id")
+  role           AiMessageRole
+  content        String
+  // Records which AiTools ran and their raw results for this message — transparency into
+  // what data backed the assistant's answer, and useful for debugging the mock provider.
+  toolCalls      Json?         @map("tool_calls")
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@map("ai_message")
 }

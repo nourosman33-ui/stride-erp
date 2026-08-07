@@ -1,4 +1,4 @@
-import { IsDateString, IsNumber, IsOptional, IsString, Max, Min } from "class-validator";
+import { IsDateString, IsInt, IsNumber, IsOptional, IsString, Max, Min } from "class-validator";
 
 export class UpdateStoreDto {
   @IsOptional()
@@ -8,6 +8,10 @@ export class UpdateStoreDto {
   @IsOptional()
   @IsString()
   address?: string;
+
+  @IsOptional()
+  @IsString()
+  phone?: string;
 
   @IsOptional()
   @IsNumber()
@@ -51,4 +55,51 @@ export class UpdateStoreDto {
   @Min(0)
   @Max(100)
   discountApprovalLimitPct?: number;
+
+  // Settings: branding, receipt, returns, loyalty (FR-CFG / loyalty program).
+  @IsOptional()
+  @IsString()
+  logoUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  taxNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  receiptFooterLine1?: string;
+
+  @IsOptional()
+  @IsString()
+  receiptFooterLine2?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  returnPeriodDays?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  loyaltyPointsPerCurrency?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  loyaltyPointValue?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  loyaltySilverThreshold?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  loyaltyGoldThreshold?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  loyaltyPlatinumThreshold?: number;
 }
