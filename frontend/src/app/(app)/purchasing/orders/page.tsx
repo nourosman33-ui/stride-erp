@@ -13,6 +13,7 @@ import { createPurchaseOrder, listPurchaseOrders } from "@/lib/api/purchasing";
 import { listSuppliers } from "@/lib/api/suppliers";
 import { useVariantCatalog } from "@/lib/hooks/use-variant-catalog";
 import { useActiveStore } from "@/lib/store-context";
+import { useLocale } from "@/lib/i18n/locale-context";
 import { formatDate, formatMoney } from "@/lib/format";
 import { PageHeader } from "@/components/layout/page-header";
 import { NoStoreSelected } from "@/components/no-store-selected";
@@ -57,6 +58,7 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 function NewPurchaseOrderDialog({ storeId }: { storeId: string }) {
+  const { t } = useLocale();
   const [open, setOpen] = React.useState(false);
   const queryClient = useQueryClient();
   const { data: suppliers } = useQuery({ queryKey: ["suppliers"], queryFn: listSuppliers });
@@ -87,7 +89,7 @@ function NewPurchaseOrderDialog({ storeId }: { storeId: string }) {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["purchase-orders"] });
-      toast.success("Purchase order created");
+      toast.success(t("purchaseOrders.created"));
       setOpen(false);
       form.reset({
         supplierId: "",
@@ -96,7 +98,7 @@ function NewPurchaseOrderDialog({ storeId }: { storeId: string }) {
         lines: [{ variantId: "", quantityOrdered: 1, costPrice: 0, sellingPriceAtOrder: 0 }],
       });
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to create purchase order"),
+    onError: (err) => toast.error(err instanceof Error ? err.message : t("purchaseOrders.createFailed")),
   });
 
   return (
@@ -104,12 +106,12 @@ function NewPurchaseOrderDialog({ storeId }: { storeId: string }) {
       <DialogTrigger asChild>
         <Button>
           <Plus className="size-4" />
-          New Purchase Order
+          {t("purchaseOrders.newOrder")}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>New purchase order</DialogTitle>
+          <DialogTitle>{t("purchaseOrders.newDialogTitle")}</DialogTitle>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} className="space-y-4">
@@ -119,11 +121,11 @@ function NewPurchaseOrderDialog({ storeId }: { storeId: string }) {
                 name="supplierId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Supplier</FormLabel>
+                    <FormLabel>{t("purchaseOrders.supplier")}</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Select a supplier" />
+                          <SelectValue placeholder={t("purchaseOrders.selectSupplier")} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -143,7 +145,7 @@ function NewPurchaseOrderDialog({ storeId }: { storeId: string }) {
                 name="expectedDeliveryDate"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Expected delivery (optional)</FormLabel>
+                    <FormLabel>{t("purchaseOrders.expectedDeliveryOptional")}</FormLabel>
                     <FormControl>
                       <Input type="date" {...field} />
                     </FormControl>
@@ -155,7 +157,7 @@ function NewPurchaseOrderDialog({ storeId }: { storeId: string }) {
 
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <FormLabel>Lines</FormLabel>
+                <FormLabel>{t("purchaseOrders.lines")}</FormLabel>
                 <Button
                   type="button"
                   size="sm"
@@ -165,7 +167,7 @@ function NewPurchaseOrderDialog({ storeId }: { storeId: string }) {
                   }
                 >
                   <Plus className="size-4" />
-                  Add line
+                  {t("purchaseOrders.addLine")}
                 </Button>
               </div>
 
@@ -213,7 +215,7 @@ function NewPurchaseOrderDialog({ storeId }: { storeId: string }) {
                       name={`lines.${index}.quantityOrdered`}
                       render={({ field: f }) => (
                         <FormItem>
-                          <FormLabel className="text-xs">Qty</FormLabel>
+                          <FormLabel className="text-xs">{t("purchaseOrders.qty")}</FormLabel>
                           <FormControl>
                             <Input type="number" min="1" {...f} />
                           </FormControl>
@@ -226,7 +228,7 @@ function NewPurchaseOrderDialog({ storeId }: { storeId: string }) {
                       name={`lines.${index}.costPrice`}
                       render={({ field: f }) => (
                         <FormItem>
-                          <FormLabel className="text-xs">Cost price</FormLabel>
+                          <FormLabel className="text-xs">{t("purchaseOrders.costPrice")}</FormLabel>
                           <FormControl>
                             <Input type="number" step="0.01" min="0" {...f} />
                           </FormControl>
@@ -239,7 +241,7 @@ function NewPurchaseOrderDialog({ storeId }: { storeId: string }) {
                       name={`lines.${index}.sellingPriceAtOrder`}
                       render={({ field: f }) => (
                         <FormItem>
-                          <FormLabel className="text-xs">Selling price</FormLabel>
+                          <FormLabel className="text-xs">{t("purchaseOrders.sellingPrice")}</FormLabel>
                           <FormControl>
                             <Input type="number" step="0.01" min="0" {...f} />
                           </FormControl>
@@ -257,7 +259,7 @@ function NewPurchaseOrderDialog({ storeId }: { storeId: string }) {
               name="notes"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Notes (optional)</FormLabel>
+                  <FormLabel>{t("purchaseOrders.notesOptional")}</FormLabel>
                   <FormControl>
                     <Textarea rows={2} {...field} />
                   </FormControl>
@@ -268,12 +270,13 @@ function NewPurchaseOrderDialog({ storeId }: { storeId: string }) {
 
             <div className="flex items-center justify-between border-t pt-3">
               <p className="text-sm text-muted-foreground">
-                Order total: <span className="font-semibold text-foreground">{formatMoney(orderTotal)}</span>
+                {t("purchaseOrders.orderTotal")}{" "}
+                <span className="font-semibold text-foreground">{formatMoney(orderTotal)}</span>
               </p>
               <DialogFooter className="!mt-0">
                 <Button type="submit" disabled={mutation.isPending}>
                   {mutation.isPending && <Loader2 className="size-4 animate-spin" />}
-                  Create order
+                  {t("purchaseOrders.createOrder")}
                 </Button>
               </DialogFooter>
             </div>
@@ -286,6 +289,7 @@ function NewPurchaseOrderDialog({ storeId }: { storeId: string }) {
 
 export default function PurchaseOrdersPage() {
   const { activeStore, activeStoreId, isLoading: storeLoading } = useActiveStore();
+  const { t } = useLocale();
 
   const { data: orders, isLoading } = useQuery({
     queryKey: ["purchase-orders", activeStoreId],
@@ -296,7 +300,7 @@ export default function PurchaseOrdersPage() {
   if (!storeLoading && !activeStore) {
     return (
       <div className="space-y-4">
-        <PageHeader title="Purchase Orders" description="Orders placed with suppliers" />
+        <PageHeader title={t("purchaseOrders.title")} description={t("purchaseOrders.description")} />
         <NoStoreSelected />
       </div>
     );
@@ -305,7 +309,7 @@ export default function PurchaseOrdersPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Purchase Orders"
+        title={t("purchaseOrders.title")}
         description={activeStore?.name}
         actions={activeStoreId ? <NewPurchaseOrderDialog storeId={activeStoreId} /> : undefined}
       />
@@ -314,12 +318,12 @@ export default function PurchaseOrdersPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Supplier</TableHead>
-              <TableHead>Order date</TableHead>
-              <TableHead>Expected delivery</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Lines</TableHead>
-              <TableHead className="text-right">Total</TableHead>
+              <TableHead>{t("purchaseOrders.colSupplier")}</TableHead>
+              <TableHead>{t("purchaseOrders.colOrderDate")}</TableHead>
+              <TableHead>{t("purchaseOrders.colExpectedDelivery")}</TableHead>
+              <TableHead>{t("purchaseOrders.colStatus")}</TableHead>
+              <TableHead className="text-end">{t("purchaseOrders.colLines")}</TableHead>
+              <TableHead className="text-end">{t("purchaseOrders.colTotal")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -334,7 +338,7 @@ export default function PurchaseOrdersPage() {
             ) : !orders || orders.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
-                  No purchase orders yet.
+                  {t("purchaseOrders.noOrders")}
                 </TableCell>
               </TableRow>
             ) : (
@@ -352,8 +356,8 @@ export default function PurchaseOrdersPage() {
                     <TableCell>
                       <PoStatusBadge status={po.status} />
                     </TableCell>
-                    <TableCell className="text-right">{po.lines?.length ?? 0}</TableCell>
-                    <TableCell className="text-right font-medium">{formatMoney(total)}</TableCell>
+                    <TableCell className="text-end">{po.lines?.length ?? 0}</TableCell>
+                    <TableCell className="text-end font-medium">{formatMoney(total)}</TableCell>
                   </TableRow>
                 );
               })

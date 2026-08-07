@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { createAdjustment, getStockOnHand } from "@/lib/api/inventory";
 import { useActiveStore } from "@/lib/store-context";
 import { useVariantCatalog } from "@/lib/hooks/use-variant-catalog";
+import { useLocale } from "@/lib/i18n/locale-context";
 import { PageHeader } from "@/components/layout/page-header";
 import { NoStoreSelected } from "@/components/no-store-selected";
 import { VariantPicker } from "@/components/variant-picker";
@@ -28,14 +29,6 @@ import {
 } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-const REASON_CODES = [
-  { value: "count_correction", label: "Stock count correction" },
-  { value: "damage", label: "Damage" },
-  { value: "theft", label: "Theft / loss" },
-  { value: "found", label: "Found stock" },
-  { value: "other", label: "Other" },
-];
-
 const schema = z.object({
   variantId: z.string().min(1, "Select a variant"),
   direction: z.enum(["increase", "decrease"]),
@@ -47,7 +40,16 @@ type FormValues = z.infer<typeof schema>;
 export default function AdjustmentsPage() {
   const { activeStore, activeStoreId, isLoading: storeLoading } = useActiveStore();
   const { variants, isLoading: variantsLoading } = useVariantCatalog();
+  const { t } = useLocale();
   const queryClient = useQueryClient();
+
+  const REASON_CODES = [
+    { value: "count_correction", label: t("adjustments.reasonCountCorrection") },
+    { value: "damage", label: t("adjustments.reasonDamage") },
+    { value: "theft", label: t("adjustments.reasonTheft") },
+    { value: "found", label: t("adjustments.reasonFound") },
+    { value: "other", label: t("adjustments.reasonOther") },
+  ];
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema) as Resolver<FormValues>,
@@ -74,16 +76,16 @@ export default function AdjustmentsPage() {
       queryClient.invalidateQueries({ queryKey: ["stock-on-hand"] });
       queryClient.invalidateQueries({ queryKey: ["reorder-alerts"] });
       queryClient.invalidateQueries({ queryKey: ["stock-on-hand-single"] });
-      toast.success("Adjustment posted to the stock ledger");
+      toast.success(t("adjustments.posted"));
       form.reset({ variantId: "", direction: "decrease", quantity: 1, reasonCode: "" });
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to post adjustment"),
+    onError: (err) => toast.error(err instanceof Error ? err.message : t("adjustments.postFailed")),
   });
 
   if (!storeLoading && !activeStore) {
     return (
       <div className="space-y-4">
-        <PageHeader title="Stock Adjustments" description="Correct stock counts with an audited reason" />
+        <PageHeader title={t("adjustments.title")} description={t("adjustments.description")} />
         <NoStoreSelected />
       </div>
     );
@@ -91,14 +93,11 @@ export default function AdjustmentsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Stock Adjustments"
-        description="Every adjustment posts a signed entry to the append-only stock ledger — never a raw quantity edit."
-      />
+      <PageHeader title={t("adjustments.title")} description={t("adjustments.description")} />
 
       <Card className="max-w-xl">
         <CardHeader>
-          <CardTitle className="text-base">New adjustment</CardTitle>
+          <CardTitle className="text-base">{t("adjustments.newAdjustment")}</CardTitle>
           <CardDescription>{activeStore?.name}</CardDescription>
         </CardHeader>
         <CardContent>
@@ -109,7 +108,7 @@ export default function AdjustmentsPage() {
                 name="variantId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Variant</FormLabel>
+                    <FormLabel>{t("adjustments.variant")}</FormLabel>
                     <FormControl>
                       <VariantPicker
                         variants={variants}
@@ -119,7 +118,7 @@ export default function AdjustmentsPage() {
                       />
                     </FormControl>
                     {watchedVariantId && currentQty !== undefined && (
-                      <FormDescription>Currently {currentQty} on hand.</FormDescription>
+                      <FormDescription>{t("adjustments.currentlyOnHand", { count: currentQty })}</FormDescription>
                     )}
                     <FormMessage />
                   </FormItem>
@@ -132,7 +131,7 @@ export default function AdjustmentsPage() {
                   name="direction"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Direction</FormLabel>
+                      <FormLabel>{t("adjustments.direction")}</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger className="w-full">
@@ -140,8 +139,8 @@ export default function AdjustmentsPage() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="decrease">Decrease (loss/damage/theft)</SelectItem>
-                          <SelectItem value="increase">Increase (found stock)</SelectItem>
+                          <SelectItem value="decrease">{t("adjustments.decrease")}</SelectItem>
+                          <SelectItem value="increase">{t("adjustments.increase")}</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -153,7 +152,7 @@ export default function AdjustmentsPage() {
                   name="quantity"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Quantity</FormLabel>
+                      <FormLabel>{t("adjustments.quantity")}</FormLabel>
                       <FormControl>
                         <Input type="number" min="1" {...field} />
                       </FormControl>
@@ -168,11 +167,11 @@ export default function AdjustmentsPage() {
                 name="reasonCode"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Reason</FormLabel>
+                    <FormLabel>{t("adjustments.reason")}</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Select a reason" />
+                          <SelectValue placeholder={t("adjustments.reasonPlaceholder")} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -190,7 +189,7 @@ export default function AdjustmentsPage() {
 
               <Button type="submit" disabled={mutation.isPending} className="w-full">
                 {mutation.isPending && <Loader2 className="size-4 animate-spin" />}
-                Post adjustment
+                {t("adjustments.postAdjustment")}
               </Button>
             </form>
           </Form>

@@ -1,18 +1,20 @@
 import Link from "next/link";
 import { Store } from "lucide-react";
 
+import { useLocale } from "@/lib/i18n/locale-context";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 
 export function NoStoreSelected() {
+  const { t } = useLocale();
   return (
     <Alert>
       <Store />
-      <AlertTitle>No store yet</AlertTitle>
+      <AlertTitle>{t("common.noStoreTitle")}</AlertTitle>
       <AlertDescription>
-        <p>This view is scoped to a store, and none exist yet. Create one to continue.</p>
+        <p>{t("common.noStoreDesc")}</p>
         <Button asChild size="sm" className="mt-2">
-          <Link href="/settings/store">Create a store</Link>
+          <Link href="/settings/store">{t("common.noStoreCta")}</Link>
         </Button>
       </AlertDescription>
     </Alert>

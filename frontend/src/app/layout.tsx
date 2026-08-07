@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Noto_Kufi_Arabic } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 
@@ -11,6 +11,13 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+// Applied via the `:root:dir(rtl)` override in globals.css when Arabic is active —
+// Geist has no Arabic glyphs, so RTL needs its own font rather than falling back silently.
+const notoKufiArabic = Noto_Kufi_Arabic({
+  variable: "--font-noto-kufi-arabic",
+  subsets: ["arabic"],
 });
 
 export const metadata: Metadata = {
@@ -26,7 +33,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${notoKufiArabic.variable} antialiased`}
       >
         <Providers>{children}</Providers>
       </body>

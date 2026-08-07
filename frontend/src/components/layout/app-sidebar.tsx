@@ -6,11 +6,13 @@ import { Package2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
+import { useLocale } from "@/lib/i18n/locale-context";
 import { NAV_GROUPS } from "./nav-items";
 
 export function AppSidebarNav() {
   const pathname = usePathname();
   const { hasRole } = useAuth();
+  const { t } = useLocale();
 
   return (
     <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-3 py-4">
@@ -21,9 +23,9 @@ export function AppSidebarNav() {
         if (visibleItems.length === 0) return null;
 
         return (
-          <div key={group.label}>
+          <div key={group.labelKey}>
             <p className="px-3 pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-              {group.label}
+              {t(group.labelKey)}
             </p>
             <div className="flex flex-col gap-0.5">
               {visibleItems.map((item) => {
@@ -42,7 +44,7 @@ export function AppSidebarNav() {
                     )}
                   >
                     <Icon className="size-4 shrink-0" />
-                    {item.label}
+                    {t(item.labelKey)}
                   </Link>
                 );
               })}
@@ -55,13 +57,14 @@ export function AppSidebarNav() {
 }
 
 export function AppSidebar() {
+  const { t } = useLocale();
   return (
-    <aside className="bg-sidebar text-sidebar-foreground hidden w-64 shrink-0 flex-col border-r md:flex">
+    <aside className="bg-sidebar text-sidebar-foreground hidden w-64 shrink-0 flex-col border-e md:flex">
       <div className="flex h-14 items-center gap-2 border-b px-4">
         <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
           <Package2 className="size-4" />
         </div>
-        <span className="font-semibold">STRIDE ERP</span>
+        <span className="font-semibold">{t("nav.appName")}</span>
       </div>
       <AppSidebarNav />
     </aside>

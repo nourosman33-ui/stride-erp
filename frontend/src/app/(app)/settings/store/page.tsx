@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { createStore, listStores, updateStore } from "@/lib/api/stores";
 import { useAuth } from "@/lib/auth-context";
 import { useActiveStore } from "@/lib/store-context";
+import { useLocale } from "@/lib/i18n/locale-context";
 import { PageHeader } from "@/components/layout/page-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -44,6 +45,7 @@ const createSchema = z.object({
 type CreateValues = z.infer<typeof createSchema>;
 
 function NewStoreDialog() {
+  const { t } = useLocale();
   const [open, setOpen] = React.useState(false);
   const queryClient = useQueryClient();
   const { setActiveStoreId } = useActiveStore();
@@ -58,11 +60,11 @@ function NewStoreDialog() {
     onSuccess: (store) => {
       queryClient.invalidateQueries({ queryKey: ["stores"] });
       setActiveStoreId(store.id);
-      toast.success("Store created");
+      toast.success(t("settingsStore.storeCreated"));
       setOpen(false);
       form.reset();
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to create store"),
+    onError: (err) => toast.error(err instanceof Error ? err.message : t("settingsStore.createFailed")),
   });
 
   return (
@@ -70,12 +72,12 @@ function NewStoreDialog() {
       <DialogTrigger asChild>
         <Button>
           <Plus className="size-4" />
-          New Store
+          {t("settingsStore.newStore")}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New store</DialogTitle>
+          <DialogTitle>{t("settingsStore.newDialogTitle")}</DialogTitle>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} className="space-y-4">
@@ -84,7 +86,7 @@ function NewStoreDialog() {
               name="name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Name</FormLabel>
+                  <FormLabel>{t("settingsStore.name")}</FormLabel>
                   <FormControl>
                     <Input {...field} />
                   </FormControl>
@@ -97,7 +99,7 @@ function NewStoreDialog() {
               name="address"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Address (optional)</FormLabel>
+                  <FormLabel>{t("settingsStore.address")}</FormLabel>
                   <FormControl>
                     <Input {...field} />
                   </FormControl>
@@ -111,7 +113,7 @@ function NewStoreDialog() {
                 name="currency"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Currency</FormLabel>
+                    <FormLabel>{t("settingsStore.currency")}</FormLabel>
                     <FormControl>
                       <Input {...field} />
                     </FormControl>
@@ -124,7 +126,7 @@ function NewStoreDialog() {
                 name="vatRate"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>VAT rate %</FormLabel>
+                    <FormLabel>{t("settingsStore.vatRate")}</FormLabel>
                     <FormControl>
                       <Input type="number" step="0.01" min="0" max="100" {...field} />
                     </FormControl>
@@ -136,7 +138,7 @@ function NewStoreDialog() {
             <DialogFooter>
               <Button type="submit" disabled={mutation.isPending}>
                 {mutation.isPending && <Loader2 className="size-4 animate-spin" />}
-                Create store
+                {t("settingsStore.createStore")}
               </Button>
             </DialogFooter>
           </form>
@@ -160,6 +162,7 @@ type EditValues = z.infer<typeof editSchema>;
 
 export default function StoreSettingsPage() {
   const { hasRole } = useAuth();
+  const { t } = useLocale();
   const { activeStoreId, setActiveStoreId } = useActiveStore();
   const queryClient = useQueryClient();
   const canManage = hasRole("owner", "manager");
@@ -187,16 +190,16 @@ export default function StoreSettingsPage() {
     mutationFn: (values: EditValues) => updateStore(activeStore!.id, values),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["stores"] });
-      toast.success("Store updated");
+      toast.success(t("settingsStore.storeUpdated"));
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to update store"),
+    onError: (err) => toast.error(err instanceof Error ? err.message : t("settingsStore.updateFailed")),
   });
 
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Store Profile"
-        description="Business configuration used across purchasing, POS and inventory"
+        title={t("settingsStore.title")}
+        description={t("settingsStore.description")}
         actions={hasRole("owner") ? <NewStoreDialog /> : undefined}
       />
 
@@ -204,10 +207,8 @@ export default function StoreSettingsPage() {
         <Skeleton className="h-96 w-full" />
       ) : !stores || stores.length === 0 ? (
         <Alert>
-          <AlertTitle>No store yet</AlertTitle>
-          <AlertDescription>
-            Create your first store to start using inventory, purchasing and POS.
-          </AlertDescription>
+          <AlertTitle>{t("settingsStore.noStoreYet")}</AlertTitle>
+          <AlertDescription>{t("settingsStore.noStoreDesc")}</AlertDescription>
         </Alert>
       ) : (
         <>
@@ -240,7 +241,7 @@ export default function StoreSettingsPage() {
                     name="name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Name</FormLabel>
+                        <FormLabel>{t("settingsStore.name")}</FormLabel>
                         <FormControl>
                           <Input disabled={!canManage} {...field} />
                         </FormControl>
@@ -253,7 +254,7 @@ export default function StoreSettingsPage() {
                     name="address"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Address</FormLabel>
+                        <FormLabel>{t("settingsStore.addressField")}</FormLabel>
                         <FormControl>
                           <Input disabled={!canManage} {...field} />
                         </FormControl>
@@ -267,7 +268,7 @@ export default function StoreSettingsPage() {
                       name="concept"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Concept</FormLabel>
+                          <FormLabel>{t("settingsStore.concept")}</FormLabel>
                           <FormControl>
                             <Input disabled={!canManage} {...field} />
                           </FormControl>
@@ -280,7 +281,7 @@ export default function StoreSettingsPage() {
                       name="targetMarket"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Target market</FormLabel>
+                          <FormLabel>{t("settingsStore.targetMarket")}</FormLabel>
                           <FormControl>
                             <Input disabled={!canManage} {...field} />
                           </FormControl>
@@ -295,7 +296,7 @@ export default function StoreSettingsPage() {
                       name="currency"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Currency</FormLabel>
+                          <FormLabel>{t("settingsStore.currency")}</FormLabel>
                           <FormControl>
                             <Input disabled={!canManage} {...field} />
                           </FormControl>
@@ -308,7 +309,7 @@ export default function StoreSettingsPage() {
                       name="vatRate"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>VAT rate %</FormLabel>
+                          <FormLabel>{t("settingsStore.vatRateField")}</FormLabel>
                           <FormControl>
                             <Input type="number" step="0.01" disabled={!canManage} {...field} />
                           </FormControl>
@@ -323,7 +324,7 @@ export default function StoreSettingsPage() {
                       name="poApprovalThreshold"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>PO approval threshold</FormLabel>
+                          <FormLabel>{t("settingsStore.poThreshold")}</FormLabel>
                           <FormControl>
                             <Input type="number" step="0.01" disabled={!canManage} {...field} />
                           </FormControl>
@@ -336,7 +337,7 @@ export default function StoreSettingsPage() {
                       name="discountApprovalLimitPct"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Discount approval limit %</FormLabel>
+                          <FormLabel>{t("settingsStore.discountLimit")}</FormLabel>
                           <FormControl>
                             <Input type="number" step="0.01" disabled={!canManage} {...field} />
                           </FormControl>
@@ -348,7 +349,7 @@ export default function StoreSettingsPage() {
                   {canManage && (
                     <Button type="submit" disabled={mutation.isPending}>
                       {mutation.isPending && <Loader2 className="size-4 animate-spin" />}
-                      Save changes
+                      {t("common.saveChanges")}
                     </Button>
                   )}
                 </form>

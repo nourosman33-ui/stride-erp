@@ -17,7 +17,8 @@ import {
   recordPayment,
 } from "@/lib/api/suppliers";
 import { listProducts } from "@/lib/api/catalog";
-import { formatDateTime, formatMoney, titleCase } from "@/lib/format";
+import { formatDateTime, formatMoney } from "@/lib/format";
+import { useLocale } from "@/lib/i18n/locale-context";
 import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -54,6 +55,7 @@ const linkSchema = z.object({
 type LinkFormValues = z.infer<typeof linkSchema>;
 
 function LinkProductDialog({ supplierId }: { supplierId: string }) {
+  const { t } = useLocale();
   const [open, setOpen] = React.useState(false);
   const queryClient = useQueryClient();
   const { data: products } = useQuery({ queryKey: ["products"], queryFn: listProducts });
@@ -67,11 +69,11 @@ function LinkProductDialog({ supplierId }: { supplierId: string }) {
     mutationFn: (values: LinkFormValues) => linkProduct(supplierId, values),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["supplier-products", supplierId] });
-      toast.success("Product linked");
+      toast.success(t("supplierDetail.productLinked"));
       setOpen(false);
       form.reset();
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to link product"),
+    onError: (err) => toast.error(err instanceof Error ? err.message : t("supplierDetail.linkFailed")),
   });
 
   return (
@@ -79,12 +81,12 @@ function LinkProductDialog({ supplierId }: { supplierId: string }) {
       <DialogTrigger asChild>
         <Button size="sm">
           <Plus className="size-4" />
-          Link product
+          {t("supplierDetail.linkProduct")}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Link product to supplier</DialogTitle>
+          <DialogTitle>{t("supplierDetail.linkDialogTitle")}</DialogTitle>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} className="space-y-4">
@@ -93,11 +95,11 @@ function LinkProductDialog({ supplierId }: { supplierId: string }) {
               name="productId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Product</FormLabel>
+                  <FormLabel>{t("supplierDetail.product")}</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select a product" />
+                        <SelectValue placeholder={t("supplierDetail.selectProduct")} />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
@@ -118,7 +120,7 @@ function LinkProductDialog({ supplierId }: { supplierId: string }) {
                 name="supplierCostPrice"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Supplier cost price</FormLabel>
+                    <FormLabel>{t("supplierDetail.supplierCostPrice")}</FormLabel>
                     <FormControl>
                       <Input type="number" step="0.01" min="0" {...field} />
                     </FormControl>
@@ -131,7 +133,7 @@ function LinkProductDialog({ supplierId }: { supplierId: string }) {
                 name="piecesPerCarton"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Pieces per carton (optional)</FormLabel>
+                    <FormLabel>{t("supplierDetail.piecesPerCartonOptional")}</FormLabel>
                     <FormControl>
                       <Input type="number" min="1" {...field} />
                     </FormControl>
@@ -148,14 +150,14 @@ function LinkProductDialog({ supplierId }: { supplierId: string }) {
                   <FormControl>
                     <Checkbox checked={field.value} onCheckedChange={field.onChange} />
                   </FormControl>
-                  <FormLabel className="!mt-0">Preferred supplier for this product</FormLabel>
+                  <FormLabel className="!mt-0">{t("supplierDetail.preferredCheckbox")}</FormLabel>
                 </FormItem>
               )}
             />
             <DialogFooter>
               <Button type="submit" disabled={mutation.isPending}>
                 {mutation.isPending && <Loader2 className="size-4 animate-spin" />}
-                Link product
+                {t("supplierDetail.linkProduct")}
               </Button>
             </DialogFooter>
           </form>
@@ -173,6 +175,7 @@ const paymentSchema = z.object({
 type PaymentFormValues = z.infer<typeof paymentSchema>;
 
 function RecordPaymentDialog({ supplierId }: { supplierId: string }) {
+  const { t } = useLocale();
   const [open, setOpen] = React.useState(false);
   const queryClient = useQueryClient();
 
@@ -185,11 +188,11 @@ function RecordPaymentDialog({ supplierId }: { supplierId: string }) {
     mutationFn: (values: PaymentFormValues) => recordPayment(supplierId, values),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["supplier-ledger", supplierId] });
-      toast.success("Ledger entry recorded");
+      toast.success(t("supplierDetail.entryRecorded"));
       setOpen(false);
       form.reset();
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to record entry"),
+    onError: (err) => toast.error(err instanceof Error ? err.message : t("supplierDetail.recordFailed")),
   });
 
   return (
@@ -197,12 +200,12 @@ function RecordPaymentDialog({ supplierId }: { supplierId: string }) {
       <DialogTrigger asChild>
         <Button size="sm">
           <Plus className="size-4" />
-          Record payment
+          {t("supplierDetail.recordPayment")}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Record ledger entry</DialogTitle>
+          <DialogTitle>{t("supplierDetail.recordDialogTitle")}</DialogTitle>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} className="space-y-4">
@@ -211,7 +214,7 @@ function RecordPaymentDialog({ supplierId }: { supplierId: string }) {
               name="type"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Type</FormLabel>
+                  <FormLabel>{t("supplierDetail.type")}</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger className="w-full">
@@ -219,9 +222,9 @@ function RecordPaymentDialog({ supplierId }: { supplierId: string }) {
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="deposit">Deposit</SelectItem>
-                      <SelectItem value="payment">Payment</SelectItem>
-                      <SelectItem value="credit_note">Credit note</SelectItem>
+                      <SelectItem value="deposit">{t("supplierDetail.typeDeposit")}</SelectItem>
+                      <SelectItem value="payment">{t("supplierDetail.typePayment")}</SelectItem>
+                      <SelectItem value="credit_note">{t("supplierDetail.typeCreditNote")}</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormMessage />
@@ -233,7 +236,7 @@ function RecordPaymentDialog({ supplierId }: { supplierId: string }) {
               name="amount"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Amount</FormLabel>
+                  <FormLabel>{t("supplierDetail.amount")}</FormLabel>
                   <FormControl>
                     <Input type="number" step="0.01" min="0.01" {...field} />
                   </FormControl>
@@ -246,7 +249,7 @@ function RecordPaymentDialog({ supplierId }: { supplierId: string }) {
               name="note"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Note (optional)</FormLabel>
+                  <FormLabel>{t("supplierDetail.noteOptional")}</FormLabel>
                   <FormControl>
                     <Input {...field} />
                   </FormControl>
@@ -257,7 +260,7 @@ function RecordPaymentDialog({ supplierId }: { supplierId: string }) {
             <DialogFooter>
               <Button type="submit" disabled={mutation.isPending}>
                 {mutation.isPending && <Loader2 className="size-4 animate-spin" />}
-                Save
+                {t("common.save")}
               </Button>
             </DialogFooter>
           </form>
@@ -268,6 +271,7 @@ function RecordPaymentDialog({ supplierId }: { supplierId: string }) {
 }
 
 export default function SupplierDetailPage() {
+  const { t } = useLocale();
   const params = useParams<{ id: string }>();
   const supplierId = params.id;
 
@@ -295,6 +299,13 @@ export default function SupplierDetailPage() {
 
   const currentBalance = ledger?.[0]?.balanceAfter;
 
+  const ledgerTypeLabel = (type: string) =>
+    type === "deposit"
+      ? t("supplierDetail.typeDeposit")
+      : type === "credit_note"
+        ? t("supplierDetail.typeCreditNote")
+        : t("supplierDetail.typePayment");
+
   return (
     <div className="space-y-4">
       <PageHeader title={supplier.name} description={supplier.factoryName ?? undefined} />
@@ -302,7 +313,7 @@ export default function SupplierDetailPage() {
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm text-muted-foreground">Balance paid to date</CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">{t("supplierDetail.balancePaid")}</CardTitle>
           </CardHeader>
           <CardContent className="text-xl font-semibold">
             {currentBalance ? formatMoney(currentBalance) : formatMoney(0)}
@@ -310,17 +321,17 @@ export default function SupplierDetailPage() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm text-muted-foreground">Payment terms</CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">{t("supplierDetail.paymentTerms")}</CardTitle>
           </CardHeader>
           <CardContent className="text-sm">{supplier.paymentTerms ?? "—"}</CardContent>
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm text-muted-foreground">Lead time</CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">{t("supplierDetail.leadTime")}</CardTitle>
           </CardHeader>
           <CardContent className="text-sm">
             {supplier.leadTimeDaysMin != null && supplier.leadTimeDaysMax != null
-              ? `${supplier.leadTimeDaysMin}–${supplier.leadTimeDaysMax} days`
+              ? `${supplier.leadTimeDaysMin}–${supplier.leadTimeDaysMax} ${t("suppliers.daysSuffix")}`
               : "—"}
           </CardContent>
         </Card>
@@ -328,8 +339,8 @@ export default function SupplierDetailPage() {
 
       <Tabs defaultValue="products">
         <TabsList>
-          <TabsTrigger value="products">Linked Products</TabsTrigger>
-          <TabsTrigger value="ledger">Ledger</TabsTrigger>
+          <TabsTrigger value="products">{t("supplierDetail.tabLinkedProducts")}</TabsTrigger>
+          <TabsTrigger value="ledger">{t("supplierDetail.tabLedger")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="products" className="space-y-3">
@@ -340,26 +351,26 @@ export default function SupplierDetailPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Product</TableHead>
-                  <TableHead className="text-right">Supplier cost</TableHead>
-                  <TableHead className="text-right">Pieces/carton</TableHead>
-                  <TableHead>Preferred</TableHead>
+                  <TableHead>{t("supplierDetail.colProduct")}</TableHead>
+                  <TableHead className="text-end">{t("supplierDetail.colSupplierCost")}</TableHead>
+                  <TableHead className="text-end">{t("supplierDetail.colPiecesPerCarton")}</TableHead>
+                  <TableHead>{t("supplierDetail.colPreferred")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {!linkedProducts || linkedProducts.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
-                      No products linked yet.
+                      {t("supplierDetail.noProductsLinked")}
                     </TableCell>
                   </TableRow>
                 ) : (
                   linkedProducts.map((lp) => (
                     <TableRow key={lp.id}>
                       <TableCell className="font-medium">{lp.product?.modelName ?? lp.productId}</TableCell>
-                      <TableCell className="text-right">{formatMoney(lp.supplierCostPrice)}</TableCell>
-                      <TableCell className="text-right">{lp.piecesPerCarton ?? "—"}</TableCell>
-                      <TableCell>{lp.isPreferred && <Badge variant="success">Preferred</Badge>}</TableCell>
+                      <TableCell className="text-end">{formatMoney(lp.supplierCostPrice)}</TableCell>
+                      <TableCell className="text-end">{lp.piecesPerCarton ?? "—"}</TableCell>
+                      <TableCell>{lp.isPreferred && <Badge variant="success">{t("supplierDetail.preferredBadge")}</Badge>}</TableCell>
                     </TableRow>
                   ))
                 )}
@@ -376,30 +387,30 @@ export default function SupplierDetailPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-right">Balance after</TableHead>
-                  <TableHead>Note</TableHead>
+                  <TableHead>{t("supplierDetail.colDate")}</TableHead>
+                  <TableHead>{t("supplierDetail.colType")}</TableHead>
+                  <TableHead className="text-end">{t("supplierDetail.colAmount")}</TableHead>
+                  <TableHead className="text-end">{t("supplierDetail.colBalanceAfter")}</TableHead>
+                  <TableHead>{t("supplierDetail.colNote")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {!ledger || ledger.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
-                      No ledger entries yet.
+                      {t("supplierDetail.noLedgerEntries")}
                     </TableCell>
                   </TableRow>
                 ) : (
                   ledger.map((entry) => (
                     <TableRow key={entry.id}>
                       <TableCell>{formatDateTime(entry.createdAt)}</TableCell>
-                      <TableCell>{titleCase(entry.type)}</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell>{ledgerTypeLabel(entry.type)}</TableCell>
+                      <TableCell className="text-end">
                         {entry.type === "credit_note" ? "-" : ""}
                         {formatMoney(entry.amount)}
                       </TableCell>
-                      <TableCell className="text-right font-medium">{formatMoney(entry.balanceAfter)}</TableCell>
+                      <TableCell className="text-end font-medium">{formatMoney(entry.balanceAfter)}</TableCell>
                       <TableCell className="text-muted-foreground">{entry.note ?? "—"}</TableCell>
                     </TableRow>
                   ))

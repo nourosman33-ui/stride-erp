@@ -1,0 +1,260 @@
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { PrismaService } from "../../prisma/prisma.service";
+import { AuditService } from "../../common/audit/audit.service";
+import { InventoryService } from "../inventory/inventory.service";
+import { CreateSaleDto } from "./dto/create-sale.dto";
+
+// Sub-cent rounding slack when comparing SUM(payments) to grand_total (FR-SAL-3).
+const MONEY_EPSILON = 0.01;
+
+// Receipts/invoice history are cashier-readable (GET /sales has no @Roles restriction), so the
+// nested variant/product here is a `select`, not `include: true` — it must never surface
+// costPriceOverride/baseCostPrice the way the full catalog endpoints do for back-office roles.
+const ORDER_INCLUDE = {
+  lines: {
+    include: {
+      variant: {
+        select: {
+          id: true,
+          productId: true,
+          sizeValueId: true,
+          colorId: true,
+          barcode: true,
+          sellingPriceOverride: true,
+          reorderPoint: true,
+          isActive: true,
+          createdAt: true,
+          updatedAt: true,
+          product: {
+            select: {
+              id: true,
+              modelName: true,
+              categoryId: true,
+              genderId: true,
+              productTypeId: true,
+              brand: true,
+              baseSellingPrice: true,
+              description: true,
+              imageUrl: true,
+              isActive: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          },
+          sizeValue: true,
+          color: true,
+        },
+      },
+    },
+  },
+  payments: true,
+  customer: true,
+  cashier: { select: { id: true, fullName: true } },
+  store: true,
+} as const;
+
+@Injectable()
+export class SalesService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+    private readonly inventory: InventoryService,
+  ) {}
+
+  /**
+   * FR-SAL-1/2/3 + FR-INV-2: the checkout transaction. Prices are resolved
+   * server-side from the variant/product (never trusted from the client),
+   * stock is re-checked inside the transaction immediately before each
+   * deduction, and every line posts a `sale` stock_ledger_entry through
+   * InventoryService — Sales never writes the ledger directly, the same
+   * choke-point rule Purchasing follows (see InventoryService header comment).
+   * A sale is never half-posted: order, lines, payments and stock deduction
+   * all commit or roll back together.
+   */
+  async checkout(dto: CreateSaleDto, cashierId: string) {
+    const store = await this.prisma.store.findUnique({ where: { id: dto.storeId } });
+    if (!store) {
+      throw new NotFoundException(`Store ${dto.storeId} not found`);
+    }
+
+    if (dto.customerId) {
+      const customer = await this.prisma.customer.findUnique({ where: { id: dto.customerId } });
+      if (!customer) {
+        throw new NotFoundException(`Customer ${dto.customerId} not found`);
+      }
+    }
+
+    const variants = await this.prisma.productVariant.findMany({
+      where: { id: { in: dto.lines.map((l) => l.variantId) } },
+      include: { product: true },
+    });
+    const variantMap = new Map(variants.map((v) => [v.id, v]));
+
+    const vatRate = Number(store.vatRate);
+    let subtotal = 0;
+    let discountTotal = 0;
+    let taxTotal = 0;
+
+    const lineData = dto.lines.map((line) => {
+      const variant = variantMap.get(line.variantId);
+      if (!variant || !variant.isActive) {
+        throw new BadRequestException(`Variant ${line.variantId} not found or inactive`);
+      }
+
+      const unitPrice = Number(variant.sellingPriceOverride ?? variant.product.baseSellingPrice);
+      const discountAmount = line.discountAmount ?? 0;
+      if (discountAmount > unitPrice) {
+        throw new BadRequestException(
+          `Discount for ${variant.product.modelName} cannot exceed its unit price`,
+        );
+      }
+
+      const netPrice = Number(((unitPrice - discountAmount) * line.quantity).toFixed(2));
+      const taxAmount = Number((netPrice * (vatRate / 100)).toFixed(2));
+
+      subtotal += unitPrice * line.quantity;
+      discountTotal += discountAmount * line.quantity;
+      taxTotal += taxAmount;
+
+      return {
+        variantId: line.variantId,
+        quantity: line.quantity,
+        unitPrice,
+        discountAmount,
+        netPrice,
+        taxAmount,
+        productName: variant.product.modelName,
+      };
+    });
+
+    subtotal = Number(subtotal.toFixed(2));
+    discountTotal = Number(discountTotal.toFixed(2));
+    taxTotal = Number(taxTotal.toFixed(2));
+    const grandTotal = Number((subtotal - discountTotal + taxTotal).toFixed(2));
+
+    const paymentTotal = Number(dto.payments.reduce((sum, p) => sum + p.amount, 0).toFixed(2));
+    if (Math.abs(paymentTotal - grandTotal) > MONEY_EPSILON) {
+      throw new BadRequestException(
+        `Payment total (${paymentTotal}) does not match invoice total (${grandTotal})`,
+      );
+    }
+
+    const order = await this.prisma.$transaction(async (tx) => {
+      for (const line of lineData) {
+        const onHand = await this.inventory.getStockOnHand(dto.storeId, line.variantId, tx);
+        if (onHand < line.quantity) {
+          throw new BadRequestException(
+            `Insufficient stock for ${line.productName} (${onHand} on hand, ${line.quantity} requested)`,
+          );
+        }
+      }
+
+      // Atomic per-store sequence — see Store.invoiceSeq comment in schema.prisma.
+      const seqStore = await tx.store.update({
+        where: { id: dto.storeId },
+        data: { invoiceSeq: { increment: 1 } },
+        select: { invoiceSeq: true },
+      });
+      const invoiceNumber = `INV-${dto.storeId.slice(0, 8).toUpperCase()}-${String(
+        seqStore.invoiceSeq,
+      ).padStart(6, "0")}`;
+
+      const created = await tx.salesOrder.create({
+        data: {
+          storeId: dto.storeId,
+          invoiceNumber,
+          customerId: dto.customerId,
+          cashierId,
+          subtotal,
+          discountTotal,
+          taxTotal,
+          grandTotal,
+          status: "completed",
+          lines: {
+            create: lineData.map(({ productName: _productName, ...line }) => line),
+          },
+          payments: {
+            create: dto.payments.map((p) => ({
+              method: p.method,
+              amount: p.amount,
+              referenceNo: p.referenceNo,
+            })),
+          },
+        },
+        include: ORDER_INCLUDE,
+      });
+
+      for (const line of created.lines) {
+        await this.inventory.postStockMovement(
+          {
+            storeId: dto.storeId,
+            variantId: line.variantId,
+            entryType: "sale",
+            quantityDelta: -line.quantity,
+            referenceType: "sales_order",
+            referenceId: created.id,
+            performedById: cashierId,
+          },
+          tx,
+        );
+      }
+
+      return created;
+    });
+
+    await this.audit.record({
+      entityType: "sales_order",
+      entityId: order.id,
+      action: "create",
+      performedById: cashierId,
+      after: { invoiceNumber: order.invoiceNumber, grandTotal, lineCount: order.lines.length },
+    });
+
+    return order;
+  }
+
+  /**
+   * Flattened, cashier-safe sellable-items view for the POS UI: name/size/color/barcode,
+   * selling price, and on-hand quantity — never cost. Lets the POS page (and the cashier
+   * role) avoid the cost-bearing catalog/inventory endpoints entirely, rather than trusting
+   * the frontend to hide fields that the API already handed over.
+   */
+  async getPosCatalog(storeId: string) {
+    const [variants, quantities] = await Promise.all([
+      this.prisma.productVariant.findMany({
+        where: { isActive: true, product: { isActive: true } },
+        include: { product: true, sizeValue: true, color: true },
+      }),
+      this.inventory.listQuantitiesOnHand(storeId),
+    ]);
+
+    return variants.map((v) => ({
+      variantId: v.id,
+      productName: v.product.modelName,
+      barcode: v.barcode,
+      sizeLabel: `${v.sizeValue.standard} ${v.sizeValue.value}`,
+      colorName: v.color.name,
+      sellingPrice: Number(v.sellingPriceOverride ?? v.product.baseSellingPrice),
+      quantityOnHand: quantities.get(v.id) ?? 0,
+    }));
+  }
+
+  findAll(storeId?: string) {
+    return this.prisma.salesOrder.findMany({
+      where: storeId ? { storeId } : undefined,
+      include: ORDER_INCLUDE,
+      orderBy: { orderDate: "desc" },
+    });
+  }
+
+  async findOne(id: string) {
+    const order = await this.prisma.salesOrder.findUnique({
+      where: { id },
+      include: ORDER_INCLUDE,
+    });
+    if (!order) {
+      throw new NotFoundException(`Sales order ${id} not found`);
+    }
+    return order;
+  }
+}

@@ -10,7 +10,8 @@ import { toast } from "sonner";
 
 import { createUser, listUsers } from "@/lib/api/users";
 import { useAuth } from "@/lib/auth-context";
-import { formatDate, titleCase } from "@/lib/format";
+import { useLocale, type TranslationKey } from "@/lib/i18n/locale-context";
+import { formatDate } from "@/lib/format";
 import { PageHeader } from "@/components/layout/page-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -49,6 +50,7 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 function NewUserDialog() {
+  const { t } = useLocale();
   const [open, setOpen] = React.useState(false);
   const queryClient = useQueryClient();
 
@@ -61,11 +63,11 @@ function NewUserDialog() {
     mutationFn: createUser,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] });
-      toast.success("User created");
+      toast.success(t("settingsUsers.userCreated"));
       setOpen(false);
       form.reset();
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to create user"),
+    onError: (err) => toast.error(err instanceof Error ? err.message : t("settingsUsers.createFailed")),
   });
 
   const selectedRoles = form.watch("roleNames");
@@ -75,12 +77,12 @@ function NewUserDialog() {
       <DialogTrigger asChild>
         <Button>
           <Plus className="size-4" />
-          New User
+          {t("settingsUsers.newUser")}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New user</DialogTitle>
+          <DialogTitle>{t("settingsUsers.newDialogTitle")}</DialogTitle>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} className="space-y-4">
@@ -89,7 +91,7 @@ function NewUserDialog() {
               name="fullName"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Full name</FormLabel>
+                  <FormLabel>{t("settingsUsers.fullName")}</FormLabel>
                   <FormControl>
                     <Input {...field} />
                   </FormControl>
@@ -103,7 +105,7 @@ function NewUserDialog() {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email</FormLabel>
+                    <FormLabel>{t("settingsUsers.email")}</FormLabel>
                     <FormControl>
                       <Input type="email" {...field} />
                     </FormControl>
@@ -116,7 +118,7 @@ function NewUserDialog() {
                 name="phone"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Phone (optional)</FormLabel>
+                    <FormLabel>{t("settingsUsers.phoneOptional")}</FormLabel>
                     <FormControl>
                       <Input {...field} />
                     </FormControl>
@@ -130,7 +132,7 @@ function NewUserDialog() {
               name="password"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Temporary password</FormLabel>
+                  <FormLabel>{t("settingsUsers.tempPassword")}</FormLabel>
                   <FormControl>
                     <Input type="password" {...field} />
                   </FormControl>
@@ -143,7 +145,7 @@ function NewUserDialog() {
               name="roleNames"
               render={() => (
                 <FormItem>
-                  <FormLabel>Roles</FormLabel>
+                  <FormLabel>{t("settingsUsers.roles")}</FormLabel>
                   <div className="grid grid-cols-2 gap-2">
                     {ROLE_OPTIONS.map((role) => (
                       <label key={role} className="flex items-center gap-2 text-sm">
@@ -156,7 +158,7 @@ function NewUserDialog() {
                             form.setValue("roleNames", next, { shouldValidate: true });
                           }}
                         />
-                        {titleCase(role)}
+                        {t(`roles.${role}`)}
                       </label>
                     ))}
                   </div>
@@ -167,7 +169,7 @@ function NewUserDialog() {
             <DialogFooter>
               <Button type="submit" disabled={mutation.isPending}>
                 {mutation.isPending && <Loader2 className="size-4 animate-spin" />}
-                Create user
+                {t("settingsUsers.createUser")}
               </Button>
             </DialogFooter>
           </form>
@@ -179,6 +181,7 @@ function NewUserDialog() {
 
 export default function UsersSettingsPage() {
   const { hasRole } = useAuth();
+  const { t } = useLocale();
   const canManage = hasRole("owner", "manager");
 
   const { data: users, isLoading } = useQuery({
@@ -190,10 +193,10 @@ export default function UsersSettingsPage() {
   if (!canManage) {
     return (
       <div className="space-y-4">
-        <PageHeader title="Users" description="Team members and their roles" />
+        <PageHeader title={t("settingsUsers.title")} description={t("settingsUsers.description")} />
         <Alert>
-          <AlertTitle>Restricted</AlertTitle>
-          <AlertDescription>Only owners and managers can view or manage users.</AlertDescription>
+          <AlertTitle>{t("settingsUsers.restrictedTitle")}</AlertTitle>
+          <AlertDescription>{t("settingsUsers.restrictedDesc")}</AlertDescription>
         </Alert>
       </div>
     );
@@ -201,17 +204,17 @@ export default function UsersSettingsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Users" description="Team members and their roles" actions={<NewUserDialog />} />
+      <PageHeader title={t("settingsUsers.title")} description={t("settingsUsers.description")} actions={<NewUserDialog />} />
 
       <div className="rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Roles</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Joined</TableHead>
+              <TableHead>{t("settingsUsers.colName")}</TableHead>
+              <TableHead>{t("settingsUsers.colEmail")}</TableHead>
+              <TableHead>{t("settingsUsers.colRoles")}</TableHead>
+              <TableHead>{t("settingsUsers.colStatus")}</TableHead>
+              <TableHead>{t("settingsUsers.colJoined")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -226,7 +229,7 @@ export default function UsersSettingsPage() {
             ) : !users || users.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
-                  No users yet.
+                  {t("settingsUsers.noUsers")}
                 </TableCell>
               </TableRow>
             ) : (
@@ -237,12 +240,14 @@ export default function UsersSettingsPage() {
                   <TableCell className="flex flex-wrap gap-1">
                     {(u.userRoles ?? []).map((ur) => (
                       <Badge key={ur.id} variant="secondary">
-                        {titleCase(ur.role.name)}
+                        {t(`roles.${ur.role.name}` as TranslationKey)}
                       </Badge>
                     ))}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={u.isActive ? "success" : "outline"}>{u.isActive ? "Active" : "Inactive"}</Badge>
+                    <Badge variant={u.isActive ? "success" : "outline"}>
+                      {u.isActive ? t("common.active") : t("common.inactive")}
+                    </Badge>
                   </TableCell>
                   <TableCell>{formatDate(u.createdAt)}</TableCell>
                 </TableRow>

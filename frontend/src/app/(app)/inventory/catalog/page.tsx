@@ -17,6 +17,7 @@ import {
   listProductTypes,
   listSizes,
 } from "@/lib/api/catalog";
+import { useLocale } from "@/lib/i18n/locale-context";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +37,7 @@ function NamedLookupTab({
   creator: (name: string) => Promise<unknown>;
   label: string;
 }) {
+  const { t } = useLocale();
   const [name, setName] = React.useState("");
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: [queryKey], queryFn: fetcher });
@@ -45,9 +47,9 @@ function NamedLookupTab({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [queryKey] });
       setName("");
-      toast.success(`${label} added`);
+      toast.success(t("catalog.added", { label }));
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to add"),
+    onError: (err) => toast.error(err instanceof Error ? err.message : t("catalog.addFailed")),
   });
 
   return (
@@ -59,10 +61,14 @@ function NamedLookupTab({
         }}
         className="flex max-w-sm gap-2"
       >
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={`New ${label.toLowerCase()}…`} />
+        <Input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={t("catalog.newPlaceholder", { label: label.toLowerCase() })}
+        />
         <Button type="submit" disabled={mutation.isPending || !name.trim()}>
           {mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
-          Add
+          {t("common.add")}
         </Button>
       </form>
       <Card>
@@ -78,7 +84,7 @@ function NamedLookupTab({
               ) : !data || data.length === 0 ? (
                 <TableRow>
                   <TableCell className="py-6 text-center text-muted-foreground">
-                    No {label.toLowerCase()}s yet.
+                    {t("catalog.noneYet", { label: label.toLowerCase() })}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -97,6 +103,7 @@ function NamedLookupTab({
 }
 
 function ColorsTab() {
+  const { t } = useLocale();
   const [name, setName] = React.useState("");
   const [hex, setHex] = React.useState("#000000");
   const queryClient = useQueryClient();
@@ -107,9 +114,9 @@ function ColorsTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["colors"] });
       setName("");
-      toast.success("Color added");
+      toast.success(t("catalog.colorAdded"));
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to add"),
+    onError: (err) => toast.error(err instanceof Error ? err.message : t("catalog.addFailed")),
   });
 
   return (
@@ -121,7 +128,7 @@ function ColorsTab() {
         }}
         className="flex max-w-md gap-2"
       >
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="New color name…" />
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("catalog.newColorName")} />
         <input
           type="color"
           value={hex}
@@ -130,7 +137,7 @@ function ColorsTab() {
         />
         <Button type="submit" disabled={mutation.isPending || !name.trim()}>
           {mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
-          Add
+          {t("common.add")}
         </Button>
       </form>
       <Card>
@@ -145,7 +152,7 @@ function ColorsTab() {
                 </TableRow>
               ) : !data || data.length === 0 ? (
                 <TableRow>
-                  <TableCell className="py-6 text-center text-muted-foreground">No colors yet.</TableCell>
+                  <TableCell className="py-6 text-center text-muted-foreground">{t("catalog.noColorsYet")}</TableCell>
                 </TableRow>
               ) : (
                 data.map((c) => (
@@ -169,6 +176,7 @@ function ColorsTab() {
 }
 
 function SizesTab() {
+  const { t } = useLocale();
   const [standard, setStandard] = React.useState("EU");
   const [value, setValue] = React.useState("");
   const queryClient = useQueryClient();
@@ -179,9 +187,9 @@ function SizesTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sizes"] });
       setValue("");
-      toast.success("Size added");
+      toast.success(t("catalog.sizeAdded"));
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to add"),
+    onError: (err) => toast.error(err instanceof Error ? err.message : t("catalog.addFailed")),
   });
 
   const sorted = [...(data ?? [])].sort((a, b) => a.sortOrder - b.sortOrder);
@@ -198,13 +206,13 @@ function SizesTab() {
         <Input
           value={standard}
           onChange={(e) => setStandard(e.target.value)}
-          placeholder="Standard (EU/UK/US)"
+          placeholder={t("catalog.standardPlaceholder")}
           className="w-32"
         />
-        <Input value={value} onChange={(e) => setValue(e.target.value)} placeholder="Value (e.g. 42)" />
+        <Input value={value} onChange={(e) => setValue(e.target.value)} placeholder={t("catalog.valuePlaceholder")} />
         <Button type="submit" disabled={mutation.isPending || !value.trim()}>
           {mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
-          Add
+          {t("common.add")}
         </Button>
       </form>
       <Card>
@@ -212,8 +220,8 @@ function SizesTab() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Standard</TableHead>
-                <TableHead>Value</TableHead>
+                <TableHead>{t("catalog.colStandard")}</TableHead>
+                <TableHead>{t("catalog.colValue")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -226,7 +234,7 @@ function SizesTab() {
               ) : sorted.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={2} className="py-6 text-center text-muted-foreground">
-                    No sizes yet.
+                    {t("catalog.noSizesYet")}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -246,35 +254,36 @@ function SizesTab() {
 }
 
 export default function CatalogPage() {
+  const { t } = useLocale();
   return (
     <div className="space-y-4">
-      <PageHeader title="Catalog" description="Categories, genders, product types, colors and sizes" />
+      <PageHeader title={t("catalog.title")} description={t("catalog.description")} />
 
       <Tabs defaultValue="categories">
         <TabsList>
-          <TabsTrigger value="categories">Categories</TabsTrigger>
-          <TabsTrigger value="genders">Genders</TabsTrigger>
-          <TabsTrigger value="types">Product Types</TabsTrigger>
-          <TabsTrigger value="colors">Colors</TabsTrigger>
-          <TabsTrigger value="sizes">Sizes</TabsTrigger>
+          <TabsTrigger value="categories">{t("catalog.tabCategories")}</TabsTrigger>
+          <TabsTrigger value="genders">{t("catalog.tabGenders")}</TabsTrigger>
+          <TabsTrigger value="types">{t("catalog.tabTypes")}</TabsTrigger>
+          <TabsTrigger value="colors">{t("catalog.tabColors")}</TabsTrigger>
+          <TabsTrigger value="sizes">{t("catalog.tabSizes")}</TabsTrigger>
         </TabsList>
         <TabsContent value="categories">
           <NamedLookupTab
             queryKey="categories"
             fetcher={listCategories}
             creator={createCategory}
-            label="Category"
+            label={t("catalog.category")}
           />
         </TabsContent>
         <TabsContent value="genders">
-          <NamedLookupTab queryKey="genders" fetcher={listGenders} creator={createGender} label="Gender" />
+          <NamedLookupTab queryKey="genders" fetcher={listGenders} creator={createGender} label={t("catalog.gender")} />
         </TabsContent>
         <TabsContent value="types">
           <NamedLookupTab
             queryKey="product-types"
             fetcher={listProductTypes}
             creator={createProductType}
-            label="Product type"
+            label={t("catalog.productType")}
           />
         </TabsContent>
         <TabsContent value="colors">

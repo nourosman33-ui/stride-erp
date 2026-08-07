@@ -15,17 +15,22 @@ export class InventoryController {
     private readonly audit: AuditService,
   ) {}
 
+  // Cost/value-bearing inventory views — never available to cashiers (POS uses
+  // GET /sales/pos-catalog, which reports quantity only, instead).
   @Get("stock/:storeId")
+  @Roles("owner", "manager", "inventory_clerk", "accountant")
   listStock(@Param("storeId") storeId: string) {
     return this.inventoryService.listStockOnHand(storeId);
   }
 
   @Get("stock/:storeId/:variantId")
+  @Roles("owner", "manager", "inventory_clerk", "accountant")
   getStock(@Param("storeId") storeId: string, @Param("variantId") variantId: string) {
     return this.inventoryService.getStockOnHand(storeId, variantId);
   }
 
   @Get("movement-status/:storeId/:variantId")
+  @Roles("owner", "manager", "inventory_clerk", "accountant")
   getMovementStatus(
     @Param("storeId") storeId: string,
     @Param("variantId") variantId: string,
@@ -34,6 +39,7 @@ export class InventoryController {
   }
 
   @Get("value/:storeId")
+  @Roles("owner", "manager", "inventory_clerk", "accountant")
   getTotalValue(@Param("storeId") storeId: string) {
     return this.inventoryService.getTotalInventoryValue(storeId).then((total) => ({
       storeId,
@@ -42,6 +48,7 @@ export class InventoryController {
   }
 
   @Get("reorder-alerts/:storeId")
+  @Roles("owner", "manager", "inventory_clerk", "accountant")
   getReorderAlerts(@Param("storeId") storeId: string) {
     return this.inventoryService.getReorderAlerts(storeId);
   }

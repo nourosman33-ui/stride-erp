@@ -4,6 +4,7 @@ import * as React from "react";
 import { Check, ChevronsUpDown, Search } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useLocale } from "@/lib/i18n/locale-context";
 import type { FlatVariant } from "@/lib/hooks/use-variant-catalog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +15,7 @@ export function VariantPicker({
   variants,
   value,
   onChange,
-  placeholder = "Search by product, color, size or barcode…",
+  placeholder,
   disabled,
 }: {
   variants: FlatVariant[];
@@ -23,6 +24,7 @@ export function VariantPicker({
   placeholder?: string;
   disabled?: boolean;
 }) {
+  const { t } = useLocale();
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
 
@@ -55,7 +57,7 @@ export function VariantPicker({
               <span className="text-muted-foreground">({selected.barcode})</span>
             </span>
           ) : (
-            <span className="text-muted-foreground">{placeholder}</span>
+            <span className="text-muted-foreground">{placeholder ?? t("variantPicker.placeholder")}</span>
           )}
           <ChevronsUpDown className="size-4 shrink-0 opacity-50" />
         </Button>
@@ -67,13 +69,13 @@ export function VariantPicker({
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Type to filter…"
+            placeholder={t("variantPicker.typeToFilter")}
             className="h-8 border-none px-0 shadow-none focus-visible:ring-0"
           />
         </div>
         <ScrollArea className="h-64">
           {filtered.length === 0 ? (
-            <p className="p-4 text-center text-sm text-muted-foreground">No variants found.</p>
+            <p className="p-4 text-center text-sm text-muted-foreground">{t("variantPicker.noVariantsFound")}</p>
           ) : (
             <div className="p-1">
               {filtered.map((v) => (
@@ -86,13 +88,13 @@ export function VariantPicker({
                     setQuery("");
                   }}
                   className={cn(
-                    "flex w-full items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground",
+                    "flex w-full items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-start text-sm hover:bg-accent hover:text-accent-foreground",
                     v.variantId === value && "bg-accent/60",
                   )}
                 >
                   <span className="truncate">
                     {v.productName} — {v.colorName} / {v.sizeLabel}
-                    <span className="ml-1.5 text-xs text-muted-foreground">{v.barcode}</span>
+                    <span className="ms-1.5 text-xs text-muted-foreground">{v.barcode}</span>
                   </span>
                   {v.variantId === value && <Check className="size-4 shrink-0" />}
                 </button>

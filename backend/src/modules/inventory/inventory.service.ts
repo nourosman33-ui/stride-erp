@@ -59,13 +59,32 @@ export class InventoryService {
     });
   }
 
-  /** Derived, never stored — stock-on-hand is always SUM(quantity_delta) (FR-INV-1). */
-  async getStockOnHand(storeId: string, variantId: string): Promise<number> {
-    const result = await this.prisma.stockLedgerEntry.aggregate({
+  /**
+   * Derived, never stored — stock-on-hand is always SUM(quantity_delta) (FR-INV-1).
+   * Accepts an optional transaction client so callers (e.g. SalesService.checkout) can
+   * re-check availability inside the same transaction that posts the deduction, narrowing
+   * the race window between "is there stock?" and "deduct it" under concurrent POS sales.
+   */
+  async getStockOnHand(storeId: string, variantId: string, tx?: PrismaTx): Promise<number> {
+    const client = tx ?? this.prisma;
+    const result = await client.stockLedgerEntry.aggregate({
       where: { storeId, variantId },
       _sum: { quantityDelta: true },
     });
     return result._sum.quantityDelta ?? 0;
+  }
+
+  /**
+   * Same derivation as listStockOnHand but deliberately omits unitCost/inventoryValue —
+   * for surfaces that must never expose cost data (e.g. the cashier-facing POS catalog).
+   */
+  async listQuantitiesOnHand(storeId: string): Promise<Map<string, number>> {
+    const grouped = await this.prisma.stockLedgerEntry.groupBy({
+      by: ["variantId"],
+      where: { storeId },
+      _sum: { quantityDelta: true },
+    });
+    return new Map(grouped.map((g) => [g.variantId, g._sum.quantityDelta ?? 0]));
   }
 
   async listStockOnHand(storeId: string) {

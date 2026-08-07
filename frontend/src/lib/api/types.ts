@@ -306,3 +306,56 @@ export interface MovementStatus {
   sold: number;
   soldRatio: number | null;
 }
+
+export interface Customer {
+  id: string;
+  name: string;
+  phone: string | null;
+  notes: string | null;
+  createdAt: string;
+}
+
+export type SalesOrderStatus = "completed" | "partially_returned" | "returned" | "voided";
+
+export type PaymentMethodType = "cash" | "card" | "mobile_wallet" | "bank_transfer";
+
+export interface SalesOrderLine {
+  id: string;
+  orderId: string;
+  variantId: string;
+  quantity: number;
+  unitPrice: string;
+  discountAmount: string;
+  netPrice: string;
+  taxAmount: string;
+  variant?: ProductVariant;
+}
+
+export interface Payment {
+  id: string;
+  orderId: string;
+  method: PaymentMethodType;
+  amount: string;
+  referenceNo: string | null;
+  createdAt: string;
+}
+
+export interface SalesOrder {
+  id: string;
+  storeId: string;
+  invoiceNumber: string;
+  customerId: string | null;
+  cashierId: string;
+  orderDate: string;
+  subtotal: string;
+  discountTotal: string;
+  taxTotal: string;
+  grandTotal: string;
+  status: SalesOrderStatus;
+  createdAt: string;
+  store?: Store;
+  customer?: Customer | null;
+  cashier?: { id: string; fullName: string };
+  lines?: SalesOrderLine[];
+  payments?: Payment[];
+}

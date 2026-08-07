@@ -6,6 +6,7 @@ import { Search } from "lucide-react";
 
 import { listStockOnHand } from "@/lib/api/inventory";
 import { useActiveStore } from "@/lib/store-context";
+import { useLocale } from "@/lib/i18n/locale-context";
 import { formatMoney, formatNumber } from "@/lib/format";
 import { PageHeader } from "@/components/layout/page-header";
 import { NoStoreSelected } from "@/components/no-store-selected";
@@ -16,6 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 export default function StockOnHandPage() {
   const { activeStore, activeStoreId, isLoading: storeLoading } = useActiveStore();
+  const { t } = useLocale();
   const [search, setSearch] = React.useState("");
 
   const { data: stock, isLoading } = useQuery({
@@ -27,7 +29,7 @@ export default function StockOnHandPage() {
   if (!storeLoading && !activeStore) {
     return (
       <div className="space-y-4">
-        <PageHeader title="Stock on Hand" description="Derived from the append-only stock ledger" />
+        <PageHeader title={t("stock.title")} description={t("stock.description")} />
         <NoStoreSelected />
       </div>
     );
@@ -42,17 +44,21 @@ export default function StockOnHandPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Stock on Hand"
-        description={activeStore ? `${activeStore.name} — total value ${formatMoney(totalValue, activeStore.currency)}` : undefined}
+        title={t("stock.title")}
+        description={
+          activeStore
+            ? t("stock.descriptionWithTotal", { store: activeStore.name, value: formatMoney(totalValue, activeStore.currency) })
+            : undefined
+        }
       />
 
       <div className="relative max-w-sm">
-        <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Search className="absolute top-1/2 start-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by product, color or barcode…"
-          className="pl-8"
+          placeholder={t("stock.searchPlaceholder")}
+          className="ps-8"
         />
       </div>
 
@@ -60,13 +66,13 @@ export default function StockOnHandPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Product</TableHead>
-              <TableHead>Color</TableHead>
-              <TableHead>Size</TableHead>
-              <TableHead>Barcode</TableHead>
-              <TableHead className="text-right">Qty on hand</TableHead>
-              <TableHead className="text-right">Avg unit cost</TableHead>
-              <TableHead className="text-right">Value</TableHead>
+              <TableHead>{t("stock.colProduct")}</TableHead>
+              <TableHead>{t("stock.colColor")}</TableHead>
+              <TableHead>{t("stock.colSize")}</TableHead>
+              <TableHead>{t("stock.colBarcode")}</TableHead>
+              <TableHead className="text-end">{t("stock.colQtyOnHand")}</TableHead>
+              <TableHead className="text-end">{t("stock.colAvgUnitCost")}</TableHead>
+              <TableHead className="text-end">{t("stock.colValue")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -81,7 +87,7 @@ export default function StockOnHandPage() {
             ) : filtered.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
-                  No stock recorded for this store yet — receive a purchase order to populate it.
+                  {t("stock.noStock")}
                 </TableCell>
               </TableRow>
             ) : (
@@ -91,15 +97,15 @@ export default function StockOnHandPage() {
                   <TableCell>{row.color ?? "—"}</TableCell>
                   <TableCell>{row.size ?? "—"}</TableCell>
                   <TableCell className="font-mono text-xs">{row.barcode ?? "—"}</TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-end">
                     <Badge variant={row.quantityOnHand <= 0 ? "destructive" : "outline"}>
                       {formatNumber(row.quantityOnHand)}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-end">
                     {row.avgUnitCost !== null ? formatMoney(row.avgUnitCost, activeStore?.currency) : "—"}
                   </TableCell>
-                  <TableCell className="text-right font-medium">
+                  <TableCell className="text-end font-medium">
                     {row.inventoryValue !== null ? formatMoney(row.inventoryValue, activeStore?.currency) : "—"}
                   </TableCell>
                 </TableRow>

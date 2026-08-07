@@ -10,6 +10,7 @@ import { Loader2, Plus, Search, Star } from "lucide-react";
 import { toast } from "sonner";
 
 import { createSupplier, listSuppliers } from "@/lib/api/suppliers";
+import { useLocale } from "@/lib/i18n/locale-context";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,6 +48,7 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 function NewSupplierDialog() {
+  const { t } = useLocale();
   const [open, setOpen] = React.useState(false);
   const queryClient = useQueryClient();
 
@@ -59,11 +61,11 @@ function NewSupplierDialog() {
     mutationFn: createSupplier,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["suppliers"] });
-      toast.success("Supplier created");
+      toast.success(t("suppliers.supplierCreated"));
       setOpen(false);
       form.reset();
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to create supplier"),
+    onError: (err) => toast.error(err instanceof Error ? err.message : t("suppliers.createFailed")),
   });
 
   return (
@@ -71,12 +73,12 @@ function NewSupplierDialog() {
       <DialogTrigger asChild>
         <Button>
           <Plus className="size-4" />
-          New Supplier
+          {t("suppliers.newSupplier")}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New supplier</DialogTitle>
+          <DialogTitle>{t("suppliers.newDialogTitle")}</DialogTitle>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} className="space-y-4">
@@ -85,7 +87,7 @@ function NewSupplierDialog() {
               name="name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Name</FormLabel>
+                  <FormLabel>{t("suppliers.name")}</FormLabel>
                   <FormControl>
                     <Input {...field} />
                   </FormControl>
@@ -99,7 +101,7 @@ function NewSupplierDialog() {
                 name="factoryName"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Factory (optional)</FormLabel>
+                    <FormLabel>{t("suppliers.factoryOptional")}</FormLabel>
                     <FormControl>
                       <Input {...field} />
                     </FormControl>
@@ -112,7 +114,7 @@ function NewSupplierDialog() {
                 name="phone"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Phone (optional)</FormLabel>
+                    <FormLabel>{t("suppliers.phoneOptional")}</FormLabel>
                     <FormControl>
                       <Input {...field} />
                     </FormControl>
@@ -127,7 +129,7 @@ function NewSupplierDialog() {
                 name="leadTimeDaysMin"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Lead time min (days)</FormLabel>
+                    <FormLabel>{t("suppliers.leadTimeMin")}</FormLabel>
                     <FormControl>
                       <Input type="number" min="0" {...field} />
                     </FormControl>
@@ -140,7 +142,7 @@ function NewSupplierDialog() {
                 name="leadTimeDaysMax"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Lead time max (days)</FormLabel>
+                    <FormLabel>{t("suppliers.leadTimeMax")}</FormLabel>
                     <FormControl>
                       <Input type="number" min="0" {...field} />
                     </FormControl>
@@ -153,7 +155,7 @@ function NewSupplierDialog() {
                 name="qualityRating"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Quality (1-5)</FormLabel>
+                    <FormLabel>{t("suppliers.qualityRating")}</FormLabel>
                     <FormControl>
                       <Input type="number" min="1" max="5" {...field} />
                     </FormControl>
@@ -167,9 +169,9 @@ function NewSupplierDialog() {
               name="paymentTerms"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Payment terms (optional)</FormLabel>
+                  <FormLabel>{t("suppliers.paymentTerms")}</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g. 50% deposit / 50% on delivery" {...field} />
+                    <Input placeholder={t("suppliers.paymentTermsPlaceholder")} {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -180,7 +182,7 @@ function NewSupplierDialog() {
               name="notes"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Notes (optional)</FormLabel>
+                  <FormLabel>{t("suppliers.notesOptional")}</FormLabel>
                   <FormControl>
                     <Textarea rows={2} {...field} />
                   </FormControl>
@@ -191,7 +193,7 @@ function NewSupplierDialog() {
             <DialogFooter>
               <Button type="submit" disabled={mutation.isPending}>
                 {mutation.isPending && <Loader2 className="size-4 animate-spin" />}
-                Create supplier
+                {t("suppliers.createSupplier")}
               </Button>
             </DialogFooter>
           </form>
@@ -202,6 +204,7 @@ function NewSupplierDialog() {
 }
 
 export default function SuppliersPage() {
+  const { t } = useLocale();
   const [search, setSearch] = React.useState("");
   const { data: suppliers, isLoading } = useQuery({ queryKey: ["suppliers"], queryFn: listSuppliers });
 
@@ -209,22 +212,22 @@ export default function SuppliersPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Suppliers" description="Factories and vendors you purchase stock from" actions={<NewSupplierDialog />} />
+      <PageHeader title={t("suppliers.title")} description={t("suppliers.description")} actions={<NewSupplierDialog />} />
 
       <div className="relative max-w-sm">
-        <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search suppliers…" className="pl-8" />
+        <Search className="absolute top-1/2 start-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("suppliers.searchPlaceholder")} className="ps-8" />
       </div>
 
       <div className="rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Factory</TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead>Lead time</TableHead>
-              <TableHead>Quality</TableHead>
+              <TableHead>{t("suppliers.colName")}</TableHead>
+              <TableHead>{t("suppliers.colFactory")}</TableHead>
+              <TableHead>{t("suppliers.colPhone")}</TableHead>
+              <TableHead>{t("suppliers.colLeadTime")}</TableHead>
+              <TableHead>{t("suppliers.colQuality")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -239,7 +242,7 @@ export default function SuppliersPage() {
             ) : filtered.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
-                  No suppliers yet.
+                  {t("suppliers.noSuppliers")}
                 </TableCell>
               </TableRow>
             ) : (
@@ -254,7 +257,7 @@ export default function SuppliersPage() {
                   <TableCell>{s.phone ?? "—"}</TableCell>
                   <TableCell>
                     {s.leadTimeDaysMin != null && s.leadTimeDaysMax != null
-                      ? `${s.leadTimeDaysMin}–${s.leadTimeDaysMax} days`
+                      ? `${s.leadTimeDaysMin}–${s.leadTimeDaysMax} ${t("suppliers.daysSuffix")}`
                       : "—"}
                   </TableCell>
                   <TableCell>

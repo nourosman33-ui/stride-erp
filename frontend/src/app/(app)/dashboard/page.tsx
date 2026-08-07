@@ -22,11 +22,12 @@ import {
 } from "recharts";
 
 import { useActiveStore } from "@/lib/store-context";
+import { useLocale } from "@/lib/i18n/locale-context";
 import { getReorderAlerts, getTotalInventoryValue } from "@/lib/api/inventory";
 import { listPurchaseOrders } from "@/lib/api/purchasing";
 import { listSuppliers } from "@/lib/api/suppliers";
 import { listProducts } from "@/lib/api/catalog";
-import { formatMoney, formatNumber, titleCase } from "@/lib/format";
+import { formatMoney, formatNumber } from "@/lib/format";
 import { PO_STATUS_COLOR, CHART_INK } from "@/lib/chart-colors";
 import { PageHeader } from "@/components/layout/page-header";
 import { NoStoreSelected } from "@/components/no-store-selected";
@@ -47,6 +48,7 @@ const PO_STATUSES: PoStatus[] = [
 
 export default function DashboardPage() {
   const { activeStore, activeStoreId, isLoading: storeLoading } = useActiveStore();
+  const { t } = useLocale();
 
   const { data: inventoryValue, isLoading: valueLoading } = useQuery({
     queryKey: ["inventory-value", activeStoreId],
@@ -78,7 +80,7 @@ export default function DashboardPage() {
 
   const poStatusData = PO_STATUSES.map((status) => ({
     status,
-    label: titleCase(status),
+    label: t(`status.${status}`),
     count: purchaseOrders?.filter((po) => po.status === status).length ?? 0,
   })).filter((d) => d.count > 0);
 
@@ -88,7 +90,7 @@ export default function DashboardPage() {
   if (!storeLoading && !activeStore) {
     return (
       <div className="space-y-4">
-        <PageHeader title="Dashboard" description="Store performance at a glance" />
+        <PageHeader title={t("dashboard.title")} description={t("common.noStoreDesc")} />
         <NoStoreSelected />
       </div>
     );
@@ -97,13 +99,13 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Dashboard"
-        description={activeStore ? `Live snapshot for ${activeStore.name}` : "Loading…"}
+        title={t("dashboard.title")}
+        description={activeStore ? t("dashboard.liveSnapshot", { store: activeStore.name }) : t("dashboard.loading")}
       />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
-          label="Inventory Value"
+          label={t("dashboard.inventoryValue")}
           value={
             valueLoading
               ? "…"
@@ -112,20 +114,20 @@ export default function DashboardPage() {
           icon={Wallet}
         />
         <StatTile
-          label="Reorder Alerts"
+          label={t("dashboard.reorderAlerts")}
           value={alertsLoading ? "…" : formatNumber(reorderAlerts?.length ?? 0)}
           icon={AlertTriangle}
           tone={reorderAlerts && reorderAlerts.length > 0 ? "warning" : "default"}
-          hint="Variants at or below reorder point"
+          hint={t("dashboard.reorderAlertsHint")}
         />
         <StatTile
-          label="Open Purchase Orders"
+          label={t("dashboard.openPurchaseOrders")}
           value={poLoading ? "…" : formatNumber(openPoCount)}
           icon={ShoppingCart}
-          hint="Draft through partially received"
+          hint={t("dashboard.openPoHint")}
         />
         <StatTile
-          label="Active Suppliers"
+          label={t("dashboard.activeSuppliers")}
           value={suppliersLoading ? "…" : formatNumber(suppliers?.length ?? 0)}
           icon={Truck}
         />
@@ -134,14 +136,14 @@ export default function DashboardPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Purchase Orders by Status</CardTitle>
+            <CardTitle className="text-base">{t("dashboard.poByStatus")}</CardTitle>
           </CardHeader>
           <CardContent>
             {poLoading ? (
               <Skeleton className="h-64 w-full" />
             ) : poStatusData.length === 0 ? (
               <p className="py-16 text-center text-sm text-muted-foreground">
-                No purchase orders for this store yet.
+                {t("dashboard.noPoYet")}
               </p>
             ) : (
               <ResponsiveContainer width="100%" height={260}>
@@ -172,14 +174,14 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Reorder Alerts</CardTitle>
+            <CardTitle className="text-base">{t("dashboard.reorderAlertsCard")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             {alertsLoading ? (
               <Skeleton className="h-64 w-full" />
             ) : !reorderAlerts || reorderAlerts.length === 0 ? (
               <p className="py-16 text-center text-sm text-muted-foreground">
-                Nothing below its reorder point right now.
+                {t("dashboard.nothingBelowReorder")}
               </p>
             ) : (
               <>
@@ -192,14 +194,16 @@ export default function DashboardPage() {
                           {row.color} · {row.size} · {row.barcode}
                         </p>
                       </div>
-                      <span className="font-medium text-warning">{row.quantityOnHand} left</span>
+                      <span className="font-medium text-warning">
+                        {row.quantityOnHand} {t("dashboard.leftSuffix")}
+                      </span>
                     </li>
                   ))}
                 </ul>
                 <Button asChild variant="ghost" size="sm" className="w-full justify-between">
                   <Link href="/inventory/reorder-alerts">
-                    View all {reorderAlerts.length} alerts
-                    <ArrowRight className="size-4" />
+                    {t("dashboard.viewAllAlerts", { count: reorderAlerts.length })}
+                    <ArrowRight className="size-4 rtl:rotate-180" />
                   </Link>
                 </Button>
               </>
@@ -210,15 +214,15 @@ export default function DashboardPage() {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <StatTile
-          label="Products in Catalog"
+          label={t("dashboard.productsInCatalog")}
           value={productsLoading ? "…" : formatNumber(products?.length ?? 0)}
           icon={Package}
         />
         <StatTile
-          label="Currency"
+          label={t("dashboard.currency")}
           value={activeStore?.currency ?? "—"}
           icon={Wallet}
-          hint={activeStore ? `VAT ${activeStore.vatRate}%` : undefined}
+          hint={activeStore ? t("dashboard.vatSuffix", { rate: activeStore.vatRate }) : undefined}
         />
       </div>
     </div>

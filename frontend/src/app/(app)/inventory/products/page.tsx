@@ -11,6 +11,7 @@ import { toast } from "sonner";
 
 import { createProduct, listCategories, listGenders, listProductTypes, listProducts } from "@/lib/api/catalog";
 import { formatMoney } from "@/lib/format";
+import { useLocale } from "@/lib/i18n/locale-context";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,6 +51,7 @@ const productSchema = z.object({
 type ProductFormValues = z.infer<typeof productSchema>;
 
 function NewProductDialog() {
+  const { t } = useLocale();
   const [open, setOpen] = React.useState(false);
   const queryClient = useQueryClient();
 
@@ -75,11 +77,11 @@ function NewProductDialog() {
     mutationFn: createProduct,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["products"] });
-      toast.success("Product created");
+      toast.success(t("products.productCreated"));
       setOpen(false);
       form.reset();
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to create product"),
+    onError: (err) => toast.error(err instanceof Error ? err.message : t("products.createFailed")),
   });
 
   return (
@@ -87,12 +89,12 @@ function NewProductDialog() {
       <DialogTrigger asChild>
         <Button>
           <Plus className="size-4" />
-          New Product
+          {t("products.newProduct")}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New product</DialogTitle>
+          <DialogTitle>{t("products.newDialogTitle")}</DialogTitle>
         </DialogHeader>
         <Form {...form}>
           <form
@@ -104,9 +106,9 @@ function NewProductDialog() {
               name="modelName"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Model name</FormLabel>
+                  <FormLabel>{t("products.modelName")}</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g. Cairo Runner" {...field} />
+                    <Input placeholder={t("products.modelNamePlaceholder")} {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -118,11 +120,11 @@ function NewProductDialog() {
                 name="categoryId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Category</FormLabel>
+                    <FormLabel>{t("products.category")}</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Select" />
+                          <SelectValue placeholder={t("common.selectPlaceholder")} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -142,11 +144,11 @@ function NewProductDialog() {
                 name="genderId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Gender</FormLabel>
+                    <FormLabel>{t("products.gender")}</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Select" />
+                          <SelectValue placeholder={t("common.selectPlaceholder")} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -166,17 +168,17 @@ function NewProductDialog() {
                 name="productTypeId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Type</FormLabel>
+                    <FormLabel>{t("products.type")}</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Select" />
+                          <SelectValue placeholder={t("common.selectPlaceholder")} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {productTypes?.map((t) => (
-                          <SelectItem key={t.id} value={t.id}>
-                            {t.name}
+                        {productTypes?.map((pt) => (
+                          <SelectItem key={pt.id} value={pt.id}>
+                            {pt.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -191,7 +193,7 @@ function NewProductDialog() {
               name="brand"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Brand (optional)</FormLabel>
+                  <FormLabel>{t("products.brand")}</FormLabel>
                   <FormControl>
                     <Input {...field} />
                   </FormControl>
@@ -205,7 +207,7 @@ function NewProductDialog() {
                 name="baseCostPrice"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Base cost price</FormLabel>
+                    <FormLabel>{t("products.baseCostPrice")}</FormLabel>
                     <FormControl>
                       <Input type="number" step="0.01" min="0" {...field} />
                     </FormControl>
@@ -218,7 +220,7 @@ function NewProductDialog() {
                 name="baseSellingPrice"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Base selling price</FormLabel>
+                    <FormLabel>{t("products.baseSellingPrice")}</FormLabel>
                     <FormControl>
                       <Input type="number" step="0.01" min="0" {...field} />
                     </FormControl>
@@ -232,7 +234,7 @@ function NewProductDialog() {
               name="description"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Description (optional)</FormLabel>
+                  <FormLabel>{t("products.description2")}</FormLabel>
                   <FormControl>
                     <Textarea rows={2} {...field} />
                   </FormControl>
@@ -243,7 +245,7 @@ function NewProductDialog() {
             <DialogFooter>
               <Button type="submit" disabled={mutation.isPending}>
                 {mutation.isPending && <Loader2 className="size-4 animate-spin" />}
-                Create product
+                {t("products.createProduct")}
               </Button>
             </DialogFooter>
           </form>
@@ -254,6 +256,7 @@ function NewProductDialog() {
 }
 
 export default function ProductsPage() {
+  const { t } = useLocale();
   const [search, setSearch] = React.useState("");
   const { data: products, isLoading } = useQuery({ queryKey: ["products"], queryFn: listProducts });
 
@@ -264,18 +267,18 @@ export default function ProductsPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Products"
-        description="Catalog of shoe models and their size/color variants"
+        title={t("products.title")}
+        description={t("products.description")}
         actions={<NewProductDialog />}
       />
 
       <div className="relative max-w-sm">
-        <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Search className="absolute top-1/2 start-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search products…"
-          className="pl-8"
+          placeholder={t("products.searchPlaceholder")}
+          className="ps-8"
         />
       </div>
 
@@ -283,13 +286,13 @@ export default function ProductsPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Model</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead>Gender</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead className="text-right">Cost</TableHead>
-              <TableHead className="text-right">Selling</TableHead>
-              <TableHead className="text-right">Variants</TableHead>
+              <TableHead>{t("products.colModel")}</TableHead>
+              <TableHead>{t("products.colCategory")}</TableHead>
+              <TableHead>{t("products.colGender")}</TableHead>
+              <TableHead>{t("products.colType")}</TableHead>
+              <TableHead className="text-end">{t("products.colCost")}</TableHead>
+              <TableHead className="text-end">{t("products.colSelling")}</TableHead>
+              <TableHead className="text-end">{t("products.colVariants")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -304,7 +307,7 @@ export default function ProductsPage() {
             ) : filtered.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
-                  No products found.
+                  {t("products.noProducts")}
                 </TableCell>
               </TableRow>
             ) : (
@@ -314,14 +317,14 @@ export default function ProductsPage() {
                     <Link href={`/inventory/products/${p.id}`} className="hover:underline">
                       {p.modelName}
                     </Link>
-                    {p.brand && <span className="ml-2 text-xs text-muted-foreground">{p.brand}</span>}
+                    {p.brand && <span className="ms-2 text-xs text-muted-foreground">{p.brand}</span>}
                   </TableCell>
                   <TableCell>{p.category?.name ?? "—"}</TableCell>
                   <TableCell>{p.gender?.name ?? "—"}</TableCell>
                   <TableCell>{p.productType?.name ?? "—"}</TableCell>
-                  <TableCell className="text-right">{formatMoney(p.baseCostPrice)}</TableCell>
-                  <TableCell className="text-right">{formatMoney(p.baseSellingPrice)}</TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-end">{formatMoney(p.baseCostPrice)}</TableCell>
+                  <TableCell className="text-end">{formatMoney(p.baseSellingPrice)}</TableCell>
+                  <TableCell className="text-end">
                     <Badge variant="secondary">{p.variants?.length ?? 0}</Badge>
                   </TableCell>
                 </TableRow>

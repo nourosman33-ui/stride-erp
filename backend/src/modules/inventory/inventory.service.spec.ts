@@ -83,6 +83,20 @@ describe("InventoryService", () => {
     });
   });
 
+  describe("listQuantitiesOnHand — cost-free derivative for cashier-facing surfaces", () => {
+    it("maps variantId to summed quantity, defaulting nulls to zero", async () => {
+      prisma.stockLedgerEntry.groupBy.mockResolvedValue([
+        { variantId: "v1", _sum: { quantityDelta: 12 } },
+        { variantId: "v2", _sum: { quantityDelta: null } },
+      ]);
+
+      const result = await service.listQuantitiesOnHand("s1");
+
+      expect(result.get("v1")).toBe(12);
+      expect(result.get("v2")).toBe(0);
+    });
+  });
+
   describe("getMovementStatus — Fast/Slow/Dead classification (FR-INV-3)", () => {
     it("classifies Fast Moving at/above the configured threshold", async () => {
       prisma.movementStatusRule.findUnique.mockResolvedValue({

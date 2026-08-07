@@ -13,11 +13,12 @@ import {
 } from "recharts";
 
 import { useActiveStore } from "@/lib/store-context";
+import { useLocale } from "@/lib/i18n/locale-context";
 import { getReorderAlerts, getTotalInventoryValue, listStockOnHand } from "@/lib/api/inventory";
 import { listPurchaseOrders } from "@/lib/api/purchasing";
 import { listSuppliers } from "@/lib/api/suppliers";
 import { listProducts } from "@/lib/api/catalog";
-import { formatMoney, formatNumber, titleCase } from "@/lib/format";
+import { formatMoney, formatNumber } from "@/lib/format";
 import { CATEGORICAL, CHART_INK } from "@/lib/chart-colors";
 import { PageHeader } from "@/components/layout/page-header";
 import { NoStoreSelected } from "@/components/no-store-selected";
@@ -29,6 +30,7 @@ import type { PoStatus } from "@/lib/api/types";
 
 export default function ReportsPage() {
   const { activeStore, activeStoreId, isLoading: storeLoading } = useActiveStore();
+  const { t } = useLocale();
 
   const { data: stock, isLoading: stockLoading } = useQuery({
     queryKey: ["stock-on-hand", activeStoreId],
@@ -56,7 +58,7 @@ export default function ReportsPage() {
   if (!storeLoading && !activeStore) {
     return (
       <div className="space-y-4">
-        <PageHeader title="Reports" description="Inventory and purchasing insight from live data" />
+        <PageHeader title={t("reports.title")} description={t("reports.description")} />
         <NoStoreSelected />
       </div>
     );
@@ -72,7 +74,7 @@ export default function ReportsPage() {
 
   const POSTATUSES: PoStatus[] = ["draft", "pending_approval", "approved", "partially_received", "received", "cancelled"];
   const poByStatus = POSTATUSES.map((status, i) => ({
-    label: titleCase(status),
+    label: t(`status.${status}`),
     count: purchaseOrders?.filter((po) => po.status === status).length ?? 0,
     color: CATEGORICAL[i % CATEGORICAL.length],
   })).filter((d) => d.count > 0);
@@ -85,41 +87,41 @@ export default function ReportsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Reports"
-        description={activeStore ? `Live figures for ${activeStore.name}, sourced from real transactions` : undefined}
+        title={t("reports.title")}
+        description={activeStore ? t("reports.descriptionWithStore", { store: activeStore.name }) : undefined}
       />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
-          label="Inventory Value"
+          label={t("reports.inventoryValue")}
           value={formatMoney(inventoryValue?.totalInventoryValue ?? 0, activeStore?.currency)}
           icon={Wallet}
         />
         <StatTile
-          label="Reorder Alerts"
+          label={t("reports.reorderAlerts")}
           value={formatNumber(reorderAlerts?.length ?? 0)}
           icon={AlertTriangle}
           tone={reorderAlerts && reorderAlerts.length > 0 ? "warning" : "default"}
         />
         <StatTile
-          label="Total PO Value"
+          label={t("reports.totalPoValue")}
           value={formatMoney(orderTotal, activeStore?.currency)}
           icon={ShoppingCart}
-          hint={`${purchaseOrders?.length ?? 0} orders`}
+          hint={`${purchaseOrders?.length ?? 0} ${t("reports.ordersSuffix")}`}
         />
-        <StatTile label="Suppliers / Products" value={`${suppliers?.length ?? 0} / ${products?.length ?? 0}`} icon={Truck} />
+        <StatTile label={t("reports.suppliersProducts")} value={`${suppliers?.length ?? 0} / ${products?.length ?? 0}`} icon={Truck} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Top 10 Products by Inventory Value</CardTitle>
+            <CardTitle className="text-base">{t("reports.topProducts")}</CardTitle>
           </CardHeader>
           <CardContent>
             {stockLoading ? (
               <Skeleton className="h-72 w-full" />
             ) : topValueProducts.length === 0 ? (
-              <p className="py-16 text-center text-sm text-muted-foreground">No stock recorded yet.</p>
+              <p className="py-16 text-center text-sm text-muted-foreground">{t("reports.noStockYet")}</p>
             ) : (
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={topValueProducts} layout="vertical" margin={{ left: 8, right: 24 }}>
@@ -147,11 +149,11 @@ export default function ReportsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Purchase Orders by Status</CardTitle>
+            <CardTitle className="text-base">{t("reports.poByStatus")}</CardTitle>
           </CardHeader>
           <CardContent>
             {poByStatus.length === 0 ? (
-              <p className="py-16 text-center text-sm text-muted-foreground">No purchase orders yet.</p>
+              <p className="py-16 text-center text-sm text-muted-foreground">{t("reports.noOrdersYet")}</p>
             ) : (
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={poByStatus} margin={{ left: 8, right: 8 }}>
@@ -171,24 +173,24 @@ export default function ReportsPage() {
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Package className="size-4" />
-            Reorder Alert Detail
+            {t("reports.reorderDetail")}
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Product</TableHead>
-                <TableHead>Color / Size</TableHead>
-                <TableHead>Barcode</TableHead>
-                <TableHead className="text-right">On hand</TableHead>
+                <TableHead>{t("reports.colProduct")}</TableHead>
+                <TableHead>{t("reports.colColorSize")}</TableHead>
+                <TableHead>{t("reports.colBarcode")}</TableHead>
+                <TableHead className="text-end">{t("reports.colOnHand")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {!reorderAlerts || reorderAlerts.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
-                    Nothing below its reorder point.
+                    {t("reports.nothingBelow")}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -199,7 +201,7 @@ export default function ReportsPage() {
                       {row.color ?? "—"} / {row.size ?? "—"}
                     </TableCell>
                     <TableCell className="font-mono text-xs">{row.barcode ?? "—"}</TableCell>
-                    <TableCell className="text-right">{row.quantityOnHand}</TableCell>
+                    <TableCell className="text-end">{row.quantityOnHand}</TableCell>
                   </TableRow>
                 ))
               )}

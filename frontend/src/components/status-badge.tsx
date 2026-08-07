@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { titleCase } from "@/lib/format";
+import { useLocale } from "@/lib/i18n/locale-context";
 import type { PoStatus } from "@/lib/api/types";
 
 const PO_VARIANT: Record<PoStatus, "default" | "secondary" | "outline" | "destructive" | "success" | "warning"> = {
@@ -12,7 +12,8 @@ const PO_VARIANT: Record<PoStatus, "default" | "secondary" | "outline" | "destru
 };
 
 export function PoStatusBadge({ status }: { status: PoStatus }) {
-  return <Badge variant={PO_VARIANT[status]}>{titleCase(status)}</Badge>;
+  const { t } = useLocale();
+  return <Badge variant={PO_VARIANT[status]}>{t(`status.${status}`)}</Badge>;
 }
 
 const MOVEMENT_VARIANT: Record<string, "success" | "warning" | "destructive" | "outline"> = {

@@ -2,10 +2,11 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { LogOut, Menu, Package2, Store as StoreIcon, User as UserIcon } from "lucide-react";
+import { Check, Globe, LogOut, Menu, Package2, Store as StoreIcon, User as UserIcon } from "lucide-react";
 
 import { useAuth } from "@/lib/auth-context";
 import { useActiveStore } from "@/lib/store-context";
+import { useLocale, type Locale } from "@/lib/i18n/locale-context";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -26,7 +27,33 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger, SheetHeader } from "@/components/ui/sheet";
 import { AppSidebarNav } from "./app-sidebar";
 import { Badge } from "@/components/ui/badge";
-import { titleCase } from "@/lib/format";
+
+const LANGUAGES: { value: Locale; label: string }[] = [
+  { value: "en", label: "English" },
+  { value: "ar", label: "العربية" },
+];
+
+function LanguageSwitcher() {
+  const { locale, setLocale, t } = useLocale();
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" title={t("topbar.language")}>
+          <Globe className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {LANGUAGES.map((lang) => (
+          <DropdownMenuItem key={lang.value} onClick={() => setLocale(lang.value)}>
+            {lang.label}
+            {locale === lang.value && <Check className="ms-auto size-4" />}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 function initials(name: string) {
   return name
@@ -40,6 +67,7 @@ function initials(name: string) {
 export function AppTopbar() {
   const { user, logout } = useAuth();
   const { stores, activeStoreId, setActiveStoreId, isLoading } = useActiveStore();
+  const { t, dir } = useLocale();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = React.useState(false);
 
@@ -51,13 +79,13 @@ export function AppTopbar() {
             <Menu className="size-5" />
           </Button>
         </SheetTrigger>
-        <SheetContent side="left" className="w-64 p-0">
+        <SheetContent side={dir === "rtl" ? "right" : "left"} className="w-64 p-0">
           <SheetHeader className="border-b">
-            <SheetTitle className="flex items-center gap-2 text-left">
+            <SheetTitle className="flex items-center gap-2 text-start">
               <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
                 <Package2 className="size-4" />
               </div>
-              STRIDE ERP
+              {t("nav.appName")}
             </SheetTitle>
           </SheetHeader>
           <div onClick={() => setMobileOpen(false)}>
@@ -69,13 +97,13 @@ export function AppTopbar() {
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <StoreIcon className="size-4" />
         {isLoading ? (
-          <span>Loading stores…</span>
+          <span>{t("topbar.loadingStores")}</span>
         ) : stores.length === 0 ? (
-          <span>No store configured yet</span>
+          <span>{t("topbar.noStoreConfigured")}</span>
         ) : (
           <Select value={activeStoreId ?? undefined} onValueChange={setActiveStoreId}>
             <SelectTrigger size="sm" className="w-[200px] border-none shadow-none">
-              <SelectValue placeholder="Select a store" />
+              <SelectValue placeholder={t("topbar.selectStore")} />
             </SelectTrigger>
             <SelectContent>
               {stores.map((store) => (
@@ -88,12 +116,13 @@ export function AppTopbar() {
         )}
       </div>
 
-      <div className="ml-auto flex items-center gap-3">
+      <div className="ms-auto flex items-center gap-3">
         {user && (
           <Badge variant="outline" className="hidden sm:inline-flex">
-            {user.roles.map(titleCase).join(", ")}
+            {user.roles.map((role) => t(`roles.${role}`)).join(", ")}
           </Badge>
         )}
+        <LanguageSwitcher />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="flex items-center gap-2 px-2">
@@ -114,7 +143,7 @@ export function AppTopbar() {
               }}
             >
               <LogOut className="size-4" />
-              Sign out
+              {t("topbar.signOut")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

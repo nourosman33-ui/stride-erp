@@ -19,12 +19,15 @@ export class ProductsController {
     return this.productsService.create(dto);
   }
 
+  // Exposes cost prices — never available to cashiers (POS uses GET /sales/pos-catalog instead).
   @Get()
+  @Roles("owner", "manager", "inventory_clerk", "accountant")
   findAll() {
     return this.productsService.findAll();
   }
 
   @Get(":id")
+  @Roles("owner", "manager", "inventory_clerk", "accountant")
   findOne(@Param("id") id: string) {
     return this.productsService.findOne(id);
   }
@@ -36,6 +39,7 @@ export class ProductsController {
   }
 
   @Get(":id/variants")
+  @Roles("owner", "manager", "inventory_clerk", "accountant")
   listVariants(@Param("id") id: string) {
     return this.productsService.listVariants(id);
   }
@@ -51,6 +55,7 @@ export class ProductsController {
   }
 
   @Get(":id/price-history")
+  @Roles("owner", "manager", "inventory_clerk", "accountant")
   getPriceHistory(@Param("id") id: string) {
     return this.productsService.getPriceHistory(id);
   }

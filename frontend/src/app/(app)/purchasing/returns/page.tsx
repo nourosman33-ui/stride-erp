@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { createPurchaseReturn } from "@/lib/api/purchasing";
 import { useActiveStore } from "@/lib/store-context";
 import { useVariantCatalog } from "@/lib/hooks/use-variant-catalog";
+import { useLocale } from "@/lib/i18n/locale-context";
 import { PageHeader } from "@/components/layout/page-header";
 import { NoStoreSelected } from "@/components/no-store-selected";
 import { VariantPicker } from "@/components/variant-picker";
@@ -47,6 +48,7 @@ interface LoggedReturn {
 export default function PurchaseReturnsPage() {
   const { activeStore, activeStoreId, isLoading: storeLoading } = useActiveStore();
   const { variants } = useVariantCatalog();
+  const { t } = useLocale();
   const queryClient = useQueryClient();
   const [recent, setRecent] = React.useState<LoggedReturn[]>([]);
 
@@ -73,16 +75,16 @@ export default function PurchaseReturnsPage() {
         },
         ...prev,
       ]);
-      toast.success("Purchase return recorded and stock decremented");
+      toast.success(t("purchaseReturns.recorded"));
       form.reset({ variantId: "", quantity: 1, reason: "" });
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to record return"),
+    onError: (err) => toast.error(err instanceof Error ? err.message : t("purchaseReturns.recordFailed")),
   });
 
   if (!storeLoading && !activeStore) {
     return (
       <div className="space-y-4">
-        <PageHeader title="Purchase Returns" description="Return defective or wrong-shipped stock to a supplier" />
+        <PageHeader title={t("purchaseReturns.title")} description={t("purchaseReturns.description")} />
         <NoStoreSelected />
       </div>
     );
@@ -90,15 +92,12 @@ export default function PurchaseReturnsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Purchase Returns"
-        description="Returning stock to a supplier decrements the stock ledger immediately."
-      />
+      <PageHeader title={t("purchaseReturns.title")} description={t("purchaseReturns.descriptionLong")} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">New return</CardTitle>
+            <CardTitle className="text-base">{t("purchaseReturns.newReturn")}</CardTitle>
             <CardDescription>{activeStore?.name}</CardDescription>
           </CardHeader>
           <CardContent>
@@ -109,7 +108,7 @@ export default function PurchaseReturnsPage() {
                   name="variantId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Variant</FormLabel>
+                      <FormLabel>{t("purchaseReturns.variant")}</FormLabel>
                       <FormControl>
                         <VariantPicker variants={variants} value={field.value || null} onChange={field.onChange} />
                       </FormControl>
@@ -122,7 +121,7 @@ export default function PurchaseReturnsPage() {
                   name="quantity"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Quantity</FormLabel>
+                      <FormLabel>{t("purchaseReturns.quantity")}</FormLabel>
                       <FormControl>
                         <Input type="number" min="1" {...field} />
                       </FormControl>
@@ -135,9 +134,9 @@ export default function PurchaseReturnsPage() {
                   name="reason"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Reason</FormLabel>
+                      <FormLabel>{t("purchaseReturns.reason")}</FormLabel>
                       <FormControl>
-                        <Textarea rows={2} placeholder="e.g. Defective stitching, wrong size shipped" {...field} />
+                        <Textarea rows={2} placeholder={t("purchaseReturns.reasonPlaceholder")} {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -145,7 +144,7 @@ export default function PurchaseReturnsPage() {
                 />
                 <Button type="submit" disabled={mutation.isPending} className="w-full">
                   {mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Undo2 className="size-4" />}
-                  Record return
+                  {t("purchaseReturns.recordReturn")}
                 </Button>
               </form>
             </Form>
@@ -154,16 +153,13 @@ export default function PurchaseReturnsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Recorded this session</CardTitle>
+            <CardTitle className="text-base">{t("purchaseReturns.recordedThisSession")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {recent.length === 0 ? (
               <Alert>
-                <AlertTitle>No returns yet</AlertTitle>
-                <AlertDescription>
-                  The backend does not expose a list endpoint for purchase returns, so this panel only shows
-                  what you record in this browser session.
-                </AlertDescription>
+                <AlertTitle>{t("purchaseReturns.noReturnsTitle")}</AlertTitle>
+                <AlertDescription>{t("purchaseReturns.noReturnsDesc")}</AlertDescription>
               </Alert>
             ) : (
               <ul className="divide-y">

@@ -17,7 +17,8 @@ import {
   listSizes,
   updatePrice,
 } from "@/lib/api/catalog";
-import { formatDateTime, formatMoney, titleCase } from "@/lib/format";
+import { formatDateTime, formatMoney } from "@/lib/format";
+import { useLocale } from "@/lib/i18n/locale-context";
 import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -53,6 +54,7 @@ const variantSchema = z.object({
 type VariantFormValues = z.infer<typeof variantSchema>;
 
 function AddVariantDialog({ productId }: { productId: string }) {
+  const { t } = useLocale();
   const [open, setOpen] = React.useState(false);
   const queryClient = useQueryClient();
   const { data: sizes } = useQuery({ queryKey: ["sizes"], queryFn: listSizes });
@@ -69,11 +71,11 @@ function AddVariantDialog({ productId }: { productId: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["product", productId] });
       queryClient.invalidateQueries({ queryKey: ["products"] });
-      toast.success("Variant added");
+      toast.success(t("productDetail.variantAdded"));
       setOpen(false);
       form.reset();
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to add variant"),
+    onError: (err) => toast.error(err instanceof Error ? err.message : t("productDetail.addVariantFailed")),
   });
 
   return (
@@ -81,12 +83,12 @@ function AddVariantDialog({ productId }: { productId: string }) {
       <DialogTrigger asChild>
         <Button size="sm">
           <Plus className="size-4" />
-          Add variant
+          {t("productDetail.addVariant")}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add variant</DialogTitle>
+          <DialogTitle>{t("productDetail.addVariantTitle")}</DialogTitle>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} className="space-y-4">
@@ -96,11 +98,11 @@ function AddVariantDialog({ productId }: { productId: string }) {
                 name="sizeValueId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Size</FormLabel>
+                    <FormLabel>{t("productDetail.size")}</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Select" />
+                          <SelectValue placeholder={t("common.selectPlaceholder")} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -120,11 +122,11 @@ function AddVariantDialog({ productId }: { productId: string }) {
                 name="colorId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Color</FormLabel>
+                    <FormLabel>{t("productDetail.color")}</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Select" />
+                          <SelectValue placeholder={t("common.selectPlaceholder")} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -145,7 +147,7 @@ function AddVariantDialog({ productId }: { productId: string }) {
               name="barcode"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Barcode (optional — auto-generated if blank)</FormLabel>
+                  <FormLabel>{t("productDetail.barcode")}</FormLabel>
                   <FormControl>
                     <Input {...field} />
                   </FormControl>
@@ -158,7 +160,7 @@ function AddVariantDialog({ productId }: { productId: string }) {
               name="reorderPoint"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Reorder point</FormLabel>
+                  <FormLabel>{t("productDetail.reorderPoint")}</FormLabel>
                   <FormControl>
                     <Input type="number" min="0" {...field} />
                   </FormControl>
@@ -169,7 +171,7 @@ function AddVariantDialog({ productId }: { productId: string }) {
             <DialogFooter>
               <Button type="submit" disabled={mutation.isPending}>
                 {mutation.isPending && <Loader2 className="size-4 animate-spin" />}
-                Add variant
+                {t("productDetail.addVariant")}
               </Button>
             </DialogFooter>
           </form>
@@ -194,6 +196,7 @@ function UpdatePriceDialog({
   productId: string;
   variants: { id: string; barcode: string }[];
 }) {
+  const { t } = useLocale();
   const [open, setOpen] = React.useState(false);
   const queryClient = useQueryClient();
 
@@ -212,23 +215,23 @@ function UpdatePriceDialog({
       queryClient.invalidateQueries({ queryKey: ["product", productId] });
       queryClient.invalidateQueries({ queryKey: ["price-history", productId] });
       queryClient.invalidateQueries({ queryKey: ["products"] });
-      toast.success("Price updated");
+      toast.success(t("productDetail.priceUpdated"));
       setOpen(false);
       form.reset();
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to update price"),
+    onError: (err) => toast.error(err instanceof Error ? err.message : t("productDetail.updatePriceFailed")),
   });
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button size="sm" variant="outline">
-          Update price
+          {t("productDetail.updatePrice")}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Update price</DialogTitle>
+          <DialogTitle>{t("productDetail.updatePriceTitle")}</DialogTitle>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} className="space-y-4">
@@ -237,7 +240,7 @@ function UpdatePriceDialog({
               name="variantId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Scope</FormLabel>
+                  <FormLabel>{t("productDetail.scope")}</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger className="w-full">
@@ -245,10 +248,10 @@ function UpdatePriceDialog({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="base">Base product price</SelectItem>
+                      <SelectItem value="base">{t("productDetail.baseProductPrice")}</SelectItem>
                       {variants.map((v) => (
                         <SelectItem key={v.id} value={v.id}>
-                          Variant override — {v.barcode}
+                          {t("productDetail.variantOverridePrefix")} {v.barcode}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -262,7 +265,7 @@ function UpdatePriceDialog({
               name="field"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Field</FormLabel>
+                  <FormLabel>{t("productDetail.field")}</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger className="w-full">
@@ -270,8 +273,8 @@ function UpdatePriceDialog({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="cost_price">Cost price</SelectItem>
-                      <SelectItem value="selling_price">Selling price</SelectItem>
+                      <SelectItem value="cost_price">{t("productDetail.costPrice")}</SelectItem>
+                      <SelectItem value="selling_price">{t("productDetail.sellingPrice")}</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormMessage />
@@ -283,7 +286,7 @@ function UpdatePriceDialog({
               name="newValue"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>New value</FormLabel>
+                  <FormLabel>{t("productDetail.newValue")}</FormLabel>
                   <FormControl>
                     <Input type="number" step="0.01" min="0" {...field} />
                   </FormControl>
@@ -296,7 +299,7 @@ function UpdatePriceDialog({
               name="reason"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Reason (optional)</FormLabel>
+                  <FormLabel>{t("productDetail.reasonOptional")}</FormLabel>
                   <FormControl>
                     <Input {...field} />
                   </FormControl>
@@ -307,7 +310,7 @@ function UpdatePriceDialog({
             <DialogFooter>
               <Button type="submit" disabled={mutation.isPending}>
                 {mutation.isPending && <Loader2 className="size-4 animate-spin" />}
-                Save
+                {t("common.save")}
               </Button>
             </DialogFooter>
           </form>
@@ -318,6 +321,7 @@ function UpdatePriceDialog({
 }
 
 export default function ProductDetailPage() {
+  const { t } = useLocale();
   const params = useParams<{ id: string }>();
   const productId = params.id;
 
@@ -356,7 +360,7 @@ export default function ProductDetailPage() {
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm text-muted-foreground">Base cost price</CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">{t("productDetail.baseCostPrice")}</CardTitle>
           </CardHeader>
           <CardContent className="text-xl font-semibold">
             {formatMoney(product.baseCostPrice)}
@@ -364,7 +368,7 @@ export default function ProductDetailPage() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm text-muted-foreground">Base selling price</CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">{t("productDetail.baseSellingPrice")}</CardTitle>
           </CardHeader>
           <CardContent className="text-xl font-semibold">
             {formatMoney(product.baseSellingPrice)}
@@ -372,7 +376,7 @@ export default function ProductDetailPage() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm text-muted-foreground">Variants</CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">{t("productDetail.variants")}</CardTitle>
           </CardHeader>
           <CardContent className="text-xl font-semibold">
             {product.variants?.length ?? 0}
@@ -382,8 +386,8 @@ export default function ProductDetailPage() {
 
       <Tabs defaultValue="variants">
         <TabsList>
-          <TabsTrigger value="variants">Variants</TabsTrigger>
-          <TabsTrigger value="history">Price History</TabsTrigger>
+          <TabsTrigger value="variants">{t("productDetail.variantsTab")}</TabsTrigger>
+          <TabsTrigger value="history">{t("productDetail.historyTab")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="variants" className="space-y-3">
@@ -394,20 +398,20 @@ export default function ProductDetailPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Barcode</TableHead>
-                  <TableHead>Size</TableHead>
-                  <TableHead>Color</TableHead>
-                  <TableHead className="text-right">Cost override</TableHead>
-                  <TableHead className="text-right">Selling override</TableHead>
-                  <TableHead className="text-right">Reorder point</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead>{t("productDetail.colBarcode")}</TableHead>
+                  <TableHead>{t("productDetail.colSize")}</TableHead>
+                  <TableHead>{t("productDetail.colColor")}</TableHead>
+                  <TableHead className="text-end">{t("productDetail.colCostOverride")}</TableHead>
+                  <TableHead className="text-end">{t("productDetail.colSellingOverride")}</TableHead>
+                  <TableHead className="text-end">{t("productDetail.colReorderPoint")}</TableHead>
+                  <TableHead>{t("productDetail.colStatus")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {(product.variants ?? []).length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
-                      No variants yet.
+                      {t("productDetail.noVariantsYet")}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -418,16 +422,16 @@ export default function ProductDetailPage() {
                         {v.sizeValue ? `${v.sizeValue.standard} ${v.sizeValue.value}` : "—"}
                       </TableCell>
                       <TableCell>{v.color?.name ?? "—"}</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-end">
                         {v.costPriceOverride ? formatMoney(v.costPriceOverride) : "—"}
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-end">
                         {v.sellingPriceOverride ? formatMoney(v.sellingPriceOverride) : "—"}
                       </TableCell>
-                      <TableCell className="text-right">{v.reorderPoint}</TableCell>
+                      <TableCell className="text-end">{v.reorderPoint}</TableCell>
                       <TableCell>
                         <Badge variant={v.isActive ? "success" : "outline"}>
-                          {v.isActive ? "Active" : "Inactive"}
+                          {v.isActive ? t("common.active") : t("common.inactive")}
                         </Badge>
                       </TableCell>
                     </TableRow>
@@ -443,32 +447,34 @@ export default function ProductDetailPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Field</TableHead>
-                  <TableHead>Scope</TableHead>
-                  <TableHead className="text-right">Old</TableHead>
-                  <TableHead className="text-right">New</TableHead>
-                  <TableHead>Changed by</TableHead>
-                  <TableHead>Reason</TableHead>
+                  <TableHead>{t("productDetail.colDate")}</TableHead>
+                  <TableHead>{t("productDetail.colField")}</TableHead>
+                  <TableHead>{t("productDetail.colScope")}</TableHead>
+                  <TableHead className="text-end">{t("productDetail.colOld")}</TableHead>
+                  <TableHead className="text-end">{t("productDetail.colNew")}</TableHead>
+                  <TableHead>{t("productDetail.colChangedBy")}</TableHead>
+                  <TableHead>{t("productDetail.colReason")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {!priceHistory || priceHistory.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
-                      No price changes recorded yet.
+                      {t("productDetail.noPriceHistory")}
                     </TableCell>
                   </TableRow>
                 ) : (
                   priceHistory.map((h) => (
                     <TableRow key={h.id}>
                       <TableCell>{formatDateTime(h.effectiveAt)}</TableCell>
-                      <TableCell>{titleCase(h.field)}</TableCell>
-                      <TableCell>{h.variantId ? "Variant" : "Base"}</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell>
+                        {h.field === "cost_price" ? t("productDetail.costPrice") : t("productDetail.sellingPrice")}
+                      </TableCell>
+                      <TableCell>{h.variantId ? t("productDetail.scopeVariant") : t("productDetail.scopeBase")}</TableCell>
+                      <TableCell className="text-end">
                         {h.oldValue ? formatMoney(h.oldValue) : "—"}
                       </TableCell>
-                      <TableCell className="text-right">{formatMoney(h.newValue)}</TableCell>
+                      <TableCell className="text-end">{formatMoney(h.newValue)}</TableCell>
                       <TableCell>{h.changedBy?.fullName ?? "—"}</TableCell>
                       <TableCell className="text-muted-foreground">{h.reason ?? "—"}</TableCell>
                     </TableRow>

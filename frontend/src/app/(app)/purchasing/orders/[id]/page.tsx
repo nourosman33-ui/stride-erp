@@ -9,7 +9,8 @@ import { toast } from "sonner";
 
 import { approvePurchaseOrder, getPurchaseOrder, receiveGoods } from "@/lib/api/purchasing";
 import { useAuth } from "@/lib/auth-context";
-import { formatDate, formatDateTime, formatMoney, titleCase } from "@/lib/format";
+import { useLocale } from "@/lib/i18n/locale-context";
+import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
 import { PageHeader } from "@/components/layout/page-header";
 import { PoStatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +35,7 @@ function ReceiveGoodsDialog({
   poId: string;
   lines: { id: string; variant?: { barcode: string; product?: { modelName: string } }; remaining: number }[];
 }) {
+  const { t } = useLocale();
   const [open, setOpen] = React.useState(false);
   const queryClient = useQueryClient();
   const { register, handleSubmit, reset } = useForm<Record<string, number>>({
@@ -51,10 +53,10 @@ function ReceiveGoodsDialog({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["purchase-order", poId] });
       queryClient.invalidateQueries({ queryKey: ["stock-on-hand"] });
-      toast.success("Goods receipt posted");
+      toast.success(t("purchaseOrderDetail.receiptPosted"));
       setOpen(false);
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to receive goods"),
+    onError: (err) => toast.error(err instanceof Error ? err.message : t("purchaseOrderDetail.receiveFailed")),
   });
 
   const pending = lines.filter((l) => l.remaining > 0);
@@ -70,23 +72,23 @@ function ReceiveGoodsDialog({
       <DialogTrigger asChild>
         <Button>
           <PackageCheck className="size-4" />
-          Receive goods
+          {t("purchaseOrderDetail.receiveGoods")}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Receive goods</DialogTitle>
+          <DialogTitle>{t("purchaseOrderDetail.receiveDialogTitle")}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit((v) => mutation.mutate(v))} className="space-y-3">
           {pending.length === 0 ? (
-            <p className="text-sm text-muted-foreground">All lines are fully received.</p>
+            <p className="text-sm text-muted-foreground">{t("purchaseOrderDetail.allReceived")}</p>
           ) : (
             pending.map((line) => (
               <div key={line.id} className="flex items-center justify-between gap-3">
                 <div className="text-sm">
                   <p className="font-medium">{line.variant?.product?.modelName ?? "Variant"}</p>
                   <p className="text-xs text-muted-foreground">
-                    {line.variant?.barcode} · remaining {line.remaining}
+                    {line.variant?.barcode} · {t("purchaseOrderDetail.remaining")} {line.remaining}
                   </p>
                 </div>
                 <Input
@@ -102,7 +104,7 @@ function ReceiveGoodsDialog({
           <DialogFooter>
             <Button type="submit" disabled={mutation.isPending || pending.length === 0}>
               {mutation.isPending && <Loader2 className="size-4 animate-spin" />}
-              Post receipt
+              {t("purchaseOrderDetail.postReceipt")}
             </Button>
           </DialogFooter>
         </form>
@@ -112,6 +114,7 @@ function ReceiveGoodsDialog({
 }
 
 export default function PurchaseOrderDetailPage() {
+  const { t } = useLocale();
   const params = useParams<{ id: string }>();
   const poId = params.id;
   const { hasRole } = useAuth();
@@ -127,9 +130,9 @@ export default function PurchaseOrderDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["purchase-order", poId] });
       queryClient.invalidateQueries({ queryKey: ["purchase-orders"] });
-      toast.success("Purchase order approved");
+      toast.success(t("purchaseOrderDetail.approved"));
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to approve"),
+    onError: (err) => toast.error(err instanceof Error ? err.message : t("purchaseOrderDetail.approveFailed")),
   });
 
   if (isLoading || !po) {
@@ -163,8 +166,8 @@ export default function PurchaseOrderDetailPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title={`Purchase Order — ${po.supplier?.name ?? po.supplierId}`}
-        description={`Placed ${formatDate(po.orderDate)}`}
+        title={`${t("purchaseOrderDetail.titlePrefix")} ${po.supplier?.name ?? po.supplierId}`}
+        description={t("purchaseOrderDetail.placedOn", { date: formatDate(po.orderDate) })}
         actions={
           <div className="flex gap-2">
             {canApprove && (
@@ -174,7 +177,7 @@ export default function PurchaseOrderDetailPage() {
                 ) : (
                   <CheckCircle2 className="size-4" />
                 )}
-                Approve
+                {t("purchaseOrderDetail.approve")}
               </Button>
             )}
             {canReceive && <ReceiveGoodsDialog poId={poId} lines={linesWithRemaining} />}
@@ -185,7 +188,7 @@ export default function PurchaseOrderDetailPage() {
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm text-muted-foreground">Status</CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">{t("purchaseOrderDetail.status")}</CardTitle>
           </CardHeader>
           <CardContent>
             <PoStatusBadge status={po.status} />
@@ -193,13 +196,13 @@ export default function PurchaseOrderDetailPage() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm text-muted-foreground">Order total</CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">{t("purchaseOrderDetail.orderTotal")}</CardTitle>
           </CardHeader>
           <CardContent className="text-xl font-semibold">{formatMoney(total)}</CardContent>
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm text-muted-foreground">Expected delivery</CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">{t("purchaseOrderDetail.expectedDelivery")}</CardTitle>
           </CardHeader>
           <CardContent className="text-sm">{formatDate(po.expectedDeliveryDate)}</CardContent>
         </Card>
@@ -209,13 +212,13 @@ export default function PurchaseOrderDetailPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Product</TableHead>
-              <TableHead>Barcode</TableHead>
-              <TableHead className="text-right">Ordered</TableHead>
-              <TableHead className="text-right">Received</TableHead>
-              <TableHead className="text-right">Cost</TableHead>
-              <TableHead className="text-right">Line total</TableHead>
-              <TableHead className="text-right">Expected profit</TableHead>
+              <TableHead>{t("purchaseOrderDetail.colProduct")}</TableHead>
+              <TableHead>{t("purchaseOrderDetail.colBarcode")}</TableHead>
+              <TableHead className="text-end">{t("purchaseOrderDetail.colOrdered")}</TableHead>
+              <TableHead className="text-end">{t("purchaseOrderDetail.colReceived")}</TableHead>
+              <TableHead className="text-end">{t("purchaseOrderDetail.colCost")}</TableHead>
+              <TableHead className="text-end">{t("purchaseOrderDetail.colLineTotal")}</TableHead>
+              <TableHead className="text-end">{t("purchaseOrderDetail.colExpectedProfit")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -223,13 +226,13 @@ export default function PurchaseOrderDetailPage() {
               <TableRow key={l.id}>
                 <TableCell className="font-medium">{l.variant?.product?.modelName ?? "—"}</TableCell>
                 <TableCell className="font-mono text-xs">{l.variant?.barcode ?? "—"}</TableCell>
-                <TableCell className="text-right">{l.quantityOrdered}</TableCell>
-                <TableCell className="text-right">
+                <TableCell className="text-end">{l.quantityOrdered}</TableCell>
+                <TableCell className="text-end">
                   {l.quantityOrdered - l.remaining} / {l.quantityOrdered}
                 </TableCell>
-                <TableCell className="text-right">{formatMoney(l.costPrice)}</TableCell>
-                <TableCell className="text-right">{formatMoney(l.lineTotal)}</TableCell>
-                <TableCell className="text-right text-success">{formatMoney(l.expectedProfit)}</TableCell>
+                <TableCell className="text-end">{formatMoney(l.costPrice)}</TableCell>
+                <TableCell className="text-end">{formatMoney(l.lineTotal)}</TableCell>
+                <TableCell className="text-end text-success">{formatMoney(l.expectedProfit)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -239,14 +242,14 @@ export default function PurchaseOrderDetailPage() {
       {po.goodsReceipts && po.goodsReceipts.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Goods receipts</CardTitle>
+            <CardTitle className="text-base">{t("purchaseOrderDetail.goodsReceipts")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             {po.goodsReceipts.map((r) => (
               <div key={r.id} className="flex items-center justify-between border-b pb-2 text-sm last:border-0">
                 <span>{formatDateTime(r.receivedDate)}</span>
                 <Badge variant={r.status === "full" ? "success" : r.status === "discrepancy" ? "destructive" : "warning"}>
-                  {titleCase(r.status)}
+                  {t(`status.${r.status}`)}
                 </Badge>
               </div>
             ))}

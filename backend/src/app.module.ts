@@ -7,6 +7,7 @@ import { CatalogModule } from "./modules/catalog/catalog.module";
 import { SuppliersModule } from "./modules/suppliers/suppliers.module";
 import { PurchasingModule } from "./modules/purchasing/purchasing.module";
 import { InventoryModule } from "./modules/inventory/inventory.module";
+import { SalesModule } from './modules/sales/sales.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { InventoryModule } from "./modules/inventory/inventory.module";
     SuppliersModule,
     PurchasingModule,
     InventoryModule,
+    SalesModule,
   ],
 })
 export class AppModule {}

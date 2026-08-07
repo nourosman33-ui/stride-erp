@@ -19,12 +19,15 @@ export class PurchasingController {
     return this.purchasingService.createPurchaseOrder(dto, user.userId);
   }
 
+  // Purchase order costs/totals — never available to cashiers.
   @Get()
+  @Roles("owner", "manager", "inventory_clerk", "accountant")
   findAll(@Query("storeId") storeId?: string) {
     return this.purchasingService.findAll(storeId);
   }
 
   @Get(":id")
+  @Roles("owner", "manager", "inventory_clerk", "accountant")
   findOne(@Param("id") id: string) {
     return this.purchasingService.findOne(id);
   }

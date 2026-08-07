@@ -127,6 +127,13 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/* Arabic has no glyphs in Geist — swap the sans stack when the page direction is RTL
+   (locale-context.tsx sets `dir` on <html>). Higher specificity than the plain `:root`
+   theme declaration above, so it wins the cascade without touching Tailwind's utilities. */
+:root:dir(rtl) {
+  --font-sans: var(--font-noto-kufi-arabic), var(--font-geist-sans);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

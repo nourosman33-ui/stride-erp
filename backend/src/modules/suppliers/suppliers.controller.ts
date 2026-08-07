@@ -18,12 +18,15 @@ export class SuppliersController {
     return this.suppliersService.create(dto);
   }
 
+  // Supplier commercial terms/costs — never available to cashiers.
   @Get()
+  @Roles("owner", "manager", "inventory_clerk", "accountant")
   findAll() {
     return this.suppliersService.findAll();
   }
 
   @Get(":id")
+  @Roles("owner", "manager", "inventory_clerk", "accountant")
   findOne(@Param("id") id: string) {
     return this.suppliersService.findOne(id);
   }
@@ -35,6 +38,7 @@ export class SuppliersController {
   }
 
   @Get(":id/products")
+  @Roles("owner", "manager", "inventory_clerk", "accountant")
   listLinkedProducts(@Param("id") id: string) {
     return this.suppliersService.listLinkedProducts(id);
   }
@@ -46,6 +50,7 @@ export class SuppliersController {
   }
 
   @Get(":id/ledger")
+  @Roles("owner", "manager", "inventory_clerk", "accountant")
   getLedger(@Param("id") id: string) {
     return this.suppliersService.getLedger(id);
   }
