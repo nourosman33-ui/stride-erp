@@ -41,6 +41,8 @@ model Store {
   // so concurrent POS terminals never race onto the same number (Postgres row-level
   // locking on UPDATE serializes concurrent increments).
   invoiceSeq               Int       @default(0) @map("invoice_seq")
+  // Same atomic-increment pattern as invoiceSeq, for sales_return.return_number.
+  returnSeq                Int       @default(0) @map("return_seq")
   isActive                 Boolean   @default(true) @map("is_active")
   createdAt                DateTime  @default(now()) @map("created_at")
   updatedAt                DateTime  @updatedAt @map("updated_at")
@@ -61,6 +63,14 @@ model Store {
   loyaltyGoldThreshold     Decimal @default(15000.00) @map("loyalty_gold_threshold") @db.Decimal(12, 2)
   loyaltyPlatinumThreshold Decimal @default(40000.00) @map("loyalty_platinum_threshold") @db.Decimal(12, 2)
 
+  // Phase 4 — Financial planning. Owner capital put into the business (opening inventory
+  // buy-in plus any fit-out). Drives payback-period and ROI in FinanceService; it is
+  // capital, never an operating expense, so it never touches the P&L.
+  initialInvestment Decimal  @default(0.00) @map("initial_investment") @db.Decimal(14, 2)
+  // Business start date for cumulative/inception-to-date reporting. Falls back to
+  // openingDate, then createdAt, when unset.
+  financialStartDate DateTime? @map("financial_start_date") @db.Date
+
   userRoles           UserRole[]
   purchaseOrders      PurchaseOrder[]
   stockLedgerEntries  StockLedgerEntry[]
@@ -68,6 +78,8 @@ model Store {
   salesOrders         SalesOrder[]
   loyaltyTransactions LoyaltyTransaction[]
   aiConversations     AiConversation[]
+  operatingExpenses   OperatingExpense[]
+  salesReturns        SalesReturn[]
 
   @@map("store")
 }
@@ -93,6 +105,8 @@ model User {
   salesOrders                  SalesOrder[]         @relation("SalesCashier")
   loyaltyTransactionsPerformed LoyaltyTransaction[] @relation("LoyaltyPerformedBy")
   aiConversations              AiConversation[]     @relation("AiConversationOwner")
+  operatingExpensesCreated     OperatingExpense[]   @relation("ExpenseCreatedBy")
+  salesReturnsProcessed        SalesReturn[]        @relation("ReturnProcessedBy")
 
   @@map("app_user")
 }
@@ -252,6 +266,7 @@ model ProductVariant {
   stockLedgerEntries StockLedgerEntry[]
   purchaseReturns    PurchaseReturn[]
   salesOrderLines    SalesOrderLine[]
+  salesReturnLines   SalesReturnLine[]
 
   @@unique([productId, sizeValueId, colorId])
   @@map("product_variant")
@@ -547,6 +562,7 @@ model Customer {
 
   salesOrders         SalesOrder[]
   loyaltyTransactions LoyaltyTransaction[]
+  salesReturns        SalesReturn[]
 
   @@map("customer")
 }
@@ -597,6 +613,9 @@ model SalesOrder {
 
   lines    SalesOrderLine[]
   payments Payment[]
+  returns  SalesReturn[] @relation("ReturnOriginalOrder")
+  // Set when this order *is* the replacement raised by an exchange.
+  exchangedFrom SalesReturn? @relation("ReturnExchangeOrder")
 
   @@index([storeId, orderDate])
   @@map("sales_order")
@@ -612,8 +631,9 @@ model SalesOrderLine {
   netPrice       Decimal @map("net_price") @db.Decimal(14, 2)
   taxAmount      Decimal @default(0) @map("tax_amount") @db.Decimal(12, 2)
 
-  order   SalesOrder     @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  variant ProductVariant @relation(fields: [variantId], references: [id])
+  order       SalesOrder        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant     ProductVariant    @relation(fields: [variantId], references: [id])
+  returnLines SalesReturnLine[]
 
   @@index([orderId])
   @@map("sales_order_line")
@@ -711,4 +731,142 @@ model AiMessage {
 
   @@index([conversationId])
   @@map("ai_message")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4 — Financial planning (owner-only reporting)
+// ---------------------------------------------------------------------------
+
+enum ExpenseCategory {
+  rent
+  utilities
+  salaries
+  marketing
+  logistics
+  maintenance
+  software
+  other
+}
+
+enum ExpenseFrequency {
+  one_time
+  daily
+  weekly
+  monthly
+  quarterly
+  yearly
+}
+
+/**
+ * Recurring and one-off operating costs — the OpEx line of the P&L. Stored as a
+ * declared rate plus a frequency rather than materialised per-period rows, so a
+ * rent change is one edit instead of a backfill; FinanceService normalises every
+ * frequency to a daily rate before applying it to a reporting window.
+ * `startDate`/`endDate` bound when the cost actually applies, so closing a cost
+ * preserves history instead of rewriting past periods.
+ */
+model OperatingExpense {
+  id          String           @id @default(uuid())
+  storeId     String           @map("store_id")
+  category    ExpenseCategory
+  label       String
+  amount      Decimal          @db.Decimal(12, 2)
+  frequency   ExpenseFrequency
+  startDate   DateTime         @map("start_date") @db.Date
+  endDate     DateTime?        @map("end_date") @db.Date
+  isActive    Boolean          @default(true) @map("is_active")
+  notes       String?
+  createdById String?          @map("created_by")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  store     Store @relation(fields: [storeId], references: [id])
+  createdBy User? @relation("ExpenseCreatedBy", fields: [createdById], references: [id])
+
+  @@index([storeId, isActive])
+  @@index([startDate])
+  @@map("operating_expense")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5 — Sales returns, refunds and exchanges
+// ---------------------------------------------------------------------------
+
+enum ReturnType {
+  refund
+  exchange
+}
+
+/**
+ * A customer bringing goods back. Never mutates the original SalesOrder's money columns —
+ * history stays immutable exactly like the stock ledger, and the order's `status` plus the
+ * returned quantities derived from SalesReturnLine tell the whole story. Revenue is reduced
+ * by subtracting returns as contra-revenue in FinanceService, not by editing past sales.
+ */
+model SalesReturn {
+  id              String     @id @default(uuid())
+  storeId         String     @map("store_id")
+  returnNumber    String     @unique @map("return_number")
+  originalOrderId String     @map("original_order_id")
+  customerId      String?    @map("customer_id")
+  processedById   String     @map("processed_by")
+  returnDate      DateTime   @default(now()) @map("return_date")
+  type            ReturnType
+  reason          String?
+
+  // Value of the goods coming back, mirroring the original sale's tax treatment.
+  refundSubtotal Decimal @map("refund_subtotal") @db.Decimal(12, 2)
+  refundTaxTotal Decimal @default(0) @map("refund_tax_total") @db.Decimal(12, 2)
+  refundTotal    Decimal @map("refund_total") @db.Decimal(12, 2)
+
+  // Exchange only: value of the replacement goods, and what still has to change hands.
+  // Positive balanceDue = customer owes; negative = money back to the customer.
+  exchangeTotal Decimal @default(0) @map("exchange_total") @db.Decimal(12, 2)
+  balanceDue    Decimal @default(0) @map("balance_due") @db.Decimal(12, 2)
+
+  refundMethod PaymentMethodType? @map("refund_method")
+  // Signed: negative claws back points earned on the returned value, positive restores
+  // points that were redeemed against it.
+  pointsAdjusted Int @default(0) @map("points_adjusted")
+
+  // The replacement sale raised for an exchange — a normal SalesOrder, so it earns points,
+  // deducts stock and appears in reporting like any other sale.
+  exchangeOrderId String? @unique @map("exchange_order_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  store         Store      @relation(fields: [storeId], references: [id])
+  originalOrder SalesOrder @relation("ReturnOriginalOrder", fields: [originalOrderId], references: [id])
+  exchangeOrder SalesOrder? @relation("ReturnExchangeOrder", fields: [exchangeOrderId], references: [id])
+  customer      Customer?  @relation(fields: [customerId], references: [id])
+  processedBy   User       @relation("ReturnProcessedBy", fields: [processedById], references: [id])
+  lines         SalesReturnLine[]
+
+  @@index([storeId, returnDate])
+  @@index([originalOrderId])
+  @@map("sales_return")
+}
+
+model SalesReturnLine {
+  id          String @id @default(uuid())
+  returnId    String @map("return_id")
+  orderLineId String @map("order_line_id")
+  variantId   String @map("variant_id")
+  quantity    Int
+  unitPrice   Decimal @map("unit_price") @db.Decimal(12, 2)
+  // Refund for this line at the price actually paid (original discount honoured).
+  refundAmount Decimal @map("refund_amount") @db.Decimal(12, 2)
+  taxAmount    Decimal @default(0) @map("tax_amount") @db.Decimal(12, 2)
+  // False for damaged goods: the customer is refunded but the stock is not put back on
+  // the shelf, so its cost stays in COGS as a real loss instead of silently reversing.
+  restock   Boolean @default(true)
+  condition String?
+
+  salesReturn SalesReturn    @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  orderLine   SalesOrderLine @relation(fields: [orderLineId], references: [id])
+  variant     ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@index([returnId])
+  @@index([orderLineId])
+  @@map("sales_return_line")
 }

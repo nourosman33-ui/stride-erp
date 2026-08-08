@@ -1,5 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+
+type PrismaTx = Prisma.TransactionClient;
 import { AuditService } from "../../common/audit/audit.service";
 import { InventoryService } from "../inventory/inventory.service";
 import { CustomersService } from "../customers/customers.service";
@@ -74,13 +77,53 @@ export class SalesService {
    * all commit or roll back together.
    */
   async checkout(dto: CreateSaleDto, cashierId: string) {
-    const store = await this.prisma.store.findUnique({ where: { id: dto.storeId } });
+    const order = await this.prisma.$transaction((tx) => this.checkoutInTx(dto, cashierId, tx));
+
+    await this.audit.record({
+      entityType: "sales_order",
+      entityId: order.id,
+      action: "create",
+      performedById: cashierId,
+      after: {
+        invoiceNumber: order.invoiceNumber,
+        grandTotal: Number(order.grandTotal),
+        lineCount: order.lines.length,
+      },
+    });
+
+    return { ...order, loyaltySnapshot: await this.loyaltySnapshot(order.customerId, dto.storeId) };
+  }
+
+  /**
+   * Loyalty figures for the receipt ("Current Points" / "Current Tier") — computed fresh
+   * post-commit rather than tracked incrementally, the same derive-don't-cache approach
+   * used for stock-on-hand.
+   */
+  private async loyaltySnapshot(customerId: string | null, storeId: string) {
+    if (!customerId) return null;
+    const [pointsBalance, stats] = await Promise.all([
+      this.customers.getPointsBalance(customerId),
+      this.customers.computeStats(customerId),
+    ]);
+    const tier = await this.customers.computeTier(storeId, stats.lifetimeSpending);
+    return { pointsBalance, tier };
+  }
+
+  /**
+   * The whole sale, executed against a caller-supplied transaction client.
+   * Exposed so ReturnsService can raise an exchange's replacement order inside the *same*
+   * transaction as the return itself — otherwise a failure between the two would leave
+   * goods returned with nothing sold back, or vice versa. Reads go through `tx` too, so
+   * the stock check sees any restock the return has already posted in that transaction.
+   */
+  async checkoutInTx(dto: CreateSaleDto, cashierId: string, tx: PrismaTx) {
+    const store = await tx.store.findUnique({ where: { id: dto.storeId } });
     if (!store) {
       throw new NotFoundException(`Store ${dto.storeId} not found`);
     }
 
     if (dto.customerId) {
-      const customer = await this.prisma.customer.findUnique({ where: { id: dto.customerId } });
+      const customer = await tx.customer.findUnique({ where: { id: dto.customerId } });
       if (!customer) {
         throw new NotFoundException(`Customer ${dto.customerId} not found`);
       }
@@ -91,7 +134,7 @@ export class SalesService {
       throw new BadRequestException("Redeeming loyalty points requires a customer on the sale");
     }
 
-    const variants = await this.prisma.productVariant.findMany({
+    const variants = await tx.productVariant.findMany({
       where: { id: { in: dto.lines.map((l) => l.variantId) } },
       include: { product: true },
     });
@@ -166,153 +209,128 @@ export class SalesService {
         ? Number(Math.max(0, dto.amountTendered - cashPortion).toFixed(2))
         : 0;
 
-    const order = await this.prisma.$transaction(async (tx) => {
-      // Create-inline-at-checkout: a phone lookup during POS found no match.
-      let customerId = dto.customerId;
-      if (!customerId && dto.newCustomer) {
-        const created = await tx.customer.create({
-          data: { name: dto.newCustomer.name, phone: dto.newCustomer.phone },
+    // Create-inline-at-checkout: a phone lookup during POS found no match.
+    let customerId = dto.customerId;
+    if (!customerId && dto.newCustomer) {
+      const createdCustomer = await tx.customer.create({
+        data: { name: dto.newCustomer.name, phone: dto.newCustomer.phone },
+      });
+      customerId = createdCustomer.id;
+    }
+
+    let pointsEarned = 0;
+    if (customerId) {
+      if (redeemPoints > 0) {
+        // tx-scoped balance check — a customer created earlier in this same transaction
+        // isn't visible to CustomersService's separate connection until commit.
+        const balanceAgg = await tx.loyaltyTransaction.aggregate({
+          where: { customerId },
+          _sum: { pointsDelta: true },
         });
-        customerId = created.id;
-      }
-
-      let pointsEarned = 0;
-      if (customerId) {
-        if (redeemPoints > 0) {
-          // tx-scoped balance check — a customer created earlier in this same transaction
-          // isn't visible to CustomersService's separate connection until commit.
-          const balanceAgg = await tx.loyaltyTransaction.aggregate({
-            where: { customerId },
-            _sum: { pointsDelta: true },
-          });
-          const balance = balanceAgg._sum.pointsDelta ?? 0;
-          if (balance < redeemPoints) {
-            throw new BadRequestException(
-              `Customer has ${balance} points, cannot redeem ${redeemPoints}`,
-            );
-          }
-        }
-        // No points earned on the portion paid *with* points — avoids an earn/redeem loop.
-        pointsEarned = Math.floor(netPayable * Number(store.loyaltyPointsPerCurrency ?? 0));
-      }
-
-      for (const line of lineData) {
-        const onHand = await this.inventory.getStockOnHand(dto.storeId, line.variantId, tx);
-        if (onHand < line.quantity) {
+        const balance = balanceAgg._sum.pointsDelta ?? 0;
+        if (balance < redeemPoints) {
           throw new BadRequestException(
-            `Insufficient stock for ${line.productName} (${onHand} on hand, ${line.quantity} requested)`,
+            `Customer has ${balance} points, cannot redeem ${redeemPoints}`,
           );
         }
       }
+      // No points earned on the portion paid *with* points — avoids an earn/redeem loop.
+      pointsEarned = Math.floor(netPayable * Number(store.loyaltyPointsPerCurrency ?? 0));
+    }
 
-      // Atomic per-store sequence — see Store.invoiceSeq comment in schema.prisma.
-      const seqStore = await tx.store.update({
-        where: { id: dto.storeId },
-        data: { invoiceSeq: { increment: 1 } },
-        select: { invoiceSeq: true },
-      });
-      const invoiceNumber = `INV-${dto.storeId.slice(0, 8).toUpperCase()}-${String(
-        seqStore.invoiceSeq,
-      ).padStart(6, "0")}`;
+    for (const line of lineData) {
+      const onHand = await this.inventory.getStockOnHand(dto.storeId, line.variantId, tx);
+      if (onHand < line.quantity) {
+        throw new BadRequestException(
+          `Insufficient stock for ${line.productName} (${onHand} on hand, ${line.quantity} requested)`,
+        );
+      }
+    }
 
-      const created = await tx.salesOrder.create({
-        data: {
-          storeId: dto.storeId,
-          invoiceNumber,
-          customerId,
-          cashierId,
-          subtotal,
-          discountTotal,
-          taxTotal,
-          grandTotal,
-          pointsEarned,
-          pointsRedeemed: redeemPoints,
-          amountTendered: dto.amountTendered,
-          changeDue,
-          status: "completed",
-          lines: {
-            create: lineData.map(({ productName: _productName, ...line }) => line),
-          },
-          payments: {
-            create: dto.payments.map((p) => ({
-              method: p.method,
-              amount: p.amount,
-              referenceNo: p.referenceNo,
-            })),
-          },
+    // Atomic per-store sequence — see Store.invoiceSeq comment in schema.prisma.
+    const seqStore = await tx.store.update({
+      where: { id: dto.storeId },
+      data: { invoiceSeq: { increment: 1 } },
+      select: { invoiceSeq: true },
+    });
+    const invoiceNumber = `INV-${dto.storeId.slice(0, 8).toUpperCase()}-${String(
+      seqStore.invoiceSeq,
+    ).padStart(6, "0")}`;
+
+    const created = await tx.salesOrder.create({
+      data: {
+        storeId: dto.storeId,
+        invoiceNumber,
+        customerId,
+        cashierId,
+        subtotal,
+        discountTotal,
+        taxTotal,
+        grandTotal,
+        pointsEarned,
+        pointsRedeemed: redeemPoints,
+        amountTendered: dto.amountTendered,
+        changeDue,
+        status: "completed",
+        lines: {
+          create: lineData.map(({ productName: _productName, ...line }) => line),
         },
-        include: ORDER_INCLUDE,
-      });
+        payments: {
+          create: dto.payments.map((p) => ({
+            method: p.method,
+            amount: p.amount,
+            referenceNo: p.referenceNo,
+          })),
+        },
+      },
+      include: ORDER_INCLUDE,
+    });
 
-      for (const line of created.lines) {
-        await this.inventory.postStockMovement(
-          {
+    for (const line of created.lines) {
+      await this.inventory.postStockMovement(
+        {
+          storeId: dto.storeId,
+          variantId: line.variantId,
+          entryType: "sale",
+          quantityDelta: -line.quantity,
+          referenceType: "sales_order",
+          referenceId: created.id,
+          performedById: cashierId,
+        },
+        tx,
+      );
+    }
+
+    if (customerId) {
+      if (pointsEarned > 0) {
+        await tx.loyaltyTransaction.create({
+          data: {
+            customerId,
             storeId: dto.storeId,
-            variantId: line.variantId,
-            entryType: "sale",
-            quantityDelta: -line.quantity,
+            type: "earn",
+            pointsDelta: pointsEarned,
             referenceType: "sales_order",
             referenceId: created.id,
             performedById: cashierId,
           },
-          tx,
-        );
+        });
       }
-
-      if (customerId) {
-        if (pointsEarned > 0) {
-          await tx.loyaltyTransaction.create({
-            data: {
-              customerId,
-              storeId: dto.storeId,
-              type: "earn",
-              pointsDelta: pointsEarned,
-              referenceType: "sales_order",
-              referenceId: created.id,
-              performedById: cashierId,
-            },
-          });
-        }
-        if (redeemPoints > 0) {
-          await tx.loyaltyTransaction.create({
-            data: {
-              customerId,
-              storeId: dto.storeId,
-              type: "redeem",
-              pointsDelta: -redeemPoints,
-              referenceType: "sales_order",
-              referenceId: created.id,
-              performedById: cashierId,
-            },
-          });
-        }
+      if (redeemPoints > 0) {
+        await tx.loyaltyTransaction.create({
+          data: {
+            customerId,
+            storeId: dto.storeId,
+            type: "redeem",
+            pointsDelta: -redeemPoints,
+            referenceType: "sales_order",
+            referenceId: created.id,
+            performedById: cashierId,
+          },
+        });
       }
-
-      return created;
-    });
-
-    await this.audit.record({
-      entityType: "sales_order",
-      entityId: order.id,
-      action: "create",
-      performedById: cashierId,
-      after: { invoiceNumber: order.invoiceNumber, grandTotal, lineCount: order.lines.length },
-    });
-
-    // Loyalty snapshot for the receipt ("Current Loyalty Points" / "Current Tier") — computed
-    // fresh post-commit rather than tracked incrementally, same derive-don't-cache approach
-    // as everything else in this codebase.
-    let loyaltySnapshot: { pointsBalance: number; tier: string } | null = null;
-    if (order.customerId) {
-      const [pointsBalance, stats] = await Promise.all([
-        this.customers.getPointsBalance(order.customerId),
-        this.customers.computeStats(order.customerId),
-      ]);
-      const tier = await this.customers.computeTier(dto.storeId, stats.lifetimeSpending);
-      loyaltySnapshot = { pointsBalance, tier };
     }
 
-    return { ...order, loyaltySnapshot };
+    return created;
   }
 
   /**

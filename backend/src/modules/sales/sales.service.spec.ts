@@ -2,17 +2,22 @@ import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { SalesService } from "./sales.service";
 
 function buildDeps() {
-  const tx = {
-    store: { update: jest.fn() },
-    salesOrder: { create: jest.fn() },
-    customer: { create: jest.fn() },
-    loyaltyTransaction: { aggregate: jest.fn(), create: jest.fn() },
-  };
+  // checkoutInTx runs its reads through the transaction client too (so an exchange sees
+  // stock restocked earlier in the same transaction), so `tx` and `prisma` share the very
+  // same mock delegates — priming `prisma.store.findUnique` drives both paths.
+  const store = { findUnique: jest.fn(), update: jest.fn() };
+  const customer = { findUnique: jest.fn(), create: jest.fn() };
+  const productVariant = { findMany: jest.fn() };
+  const salesOrder = { create: jest.fn(), findMany: jest.fn(), findUnique: jest.fn() };
+  const loyaltyTransaction = { aggregate: jest.fn(), create: jest.fn() };
+
+  const tx = { store, customer, productVariant, salesOrder, loyaltyTransaction };
   const prisma = {
-    store: { findUnique: jest.fn() },
-    customer: { findUnique: jest.fn() },
-    productVariant: { findMany: jest.fn() },
-    salesOrder: { findMany: jest.fn(), findUnique: jest.fn() },
+    store,
+    customer,
+    productVariant,
+    salesOrder,
+    loyaltyTransaction,
     $transaction: jest.fn((callback: (tx: unknown) => unknown) => callback(tx)),
   };
   const audit = { record: jest.fn() };

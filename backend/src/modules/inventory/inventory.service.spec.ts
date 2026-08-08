@@ -97,6 +97,56 @@ describe("InventoryService", () => {
     });
   });
 
+  describe("listStockOnHand / getReorderAlerts — zero-quantity handling", () => {
+    /** v1 has stock, v2 has sold out to exactly zero. */
+    function primeStock() {
+      prisma.stockLedgerEntry.groupBy.mockResolvedValue([
+        { variantId: "v1", _sum: { quantityDelta: 4 } },
+        { variantId: "v2", _sum: { quantityDelta: 0 } },
+      ]);
+      prisma.productVariant.findMany.mockImplementation((args: { select?: unknown }) =>
+        Promise.resolve(
+          args?.select
+            ? [
+                { id: "v1", reorderPoint: 1 },
+                { id: "v2", reorderPoint: 1 },
+              ]
+            : [
+                {
+                  id: "v1",
+                  barcode: "b1",
+                  product: { modelName: "Runner" },
+                  sizeValue: { value: "41" },
+                  color: { name: "Black" },
+                },
+                {
+                  id: "v2",
+                  barcode: "b2",
+                  product: { modelName: "Trainer" },
+                  sizeValue: { value: "42" },
+                  color: { name: "White" },
+                },
+              ],
+        ),
+      );
+      // Weighted-average cost lookup per variant.
+      prisma.stockLedgerEntry.findMany.mockResolvedValue([{ quantityDelta: 10, unitCost: 200 }]);
+    }
+
+    it("hides sold-out variants from the stock listing", async () => {
+      primeStock();
+      const rows = await service.listStockOnHand("s1");
+      expect(rows.map((r) => r.variantId)).toEqual(["v1"]);
+    });
+
+    it("still raises a reorder alert for a sold-out variant", async () => {
+      primeStock();
+      const alerts = await service.getReorderAlerts("s1");
+      // v2 is at zero — the most urgent reorder there is, so it must not be filtered out.
+      expect(alerts.map((a) => a.variantId).sort()).toEqual(["v2"]);
+    });
+  });
+
   describe("getMovementStatus — Fast/Slow/Dead classification (FR-INV-3)", () => {
     it("classifies Fast Moving at/above the configured threshold", async () => {
       prisma.movementStatusRule.findUnique.mockResolvedValue({

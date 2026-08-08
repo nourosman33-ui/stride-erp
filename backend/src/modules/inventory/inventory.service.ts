@@ -87,7 +87,13 @@ export class InventoryService {
     return new Map(grouped.map((g) => [g.variantId, g._sum.quantityDelta ?? 0]));
   }
 
-  async listStockOnHand(storeId: string) {
+  /**
+   * Every variant with ledger history, INCLUDING those that have netted back to zero.
+   * listStockOnHand hides those (empty rows are noise on a stock listing) but
+   * getReorderAlerts must keep them — a sold-out variant is the most urgent reorder
+   * there is, so filtering it out would silently drop the alerts that matter most.
+   */
+  private async stockRows(storeId: string) {
     const grouped = await this.prisma.stockLedgerEntry.groupBy({
       by: ["variantId"],
       where: { storeId },
@@ -119,7 +125,11 @@ export class InventoryService {
       }),
     );
 
-    return results.filter((r) => r.quantityOnHand !== 0);
+    return results;
+  }
+
+  async listStockOnHand(storeId: string) {
+    return (await this.stockRows(storeId)).filter((r) => r.quantityOnHand !== 0);
   }
 
   /** Total on-hand inventory value across a store (mirrors Inventory Tracker's total). */
@@ -182,7 +192,8 @@ export class InventoryService {
 
   /** Variants at or below their reorder point, store-wide (FR-INV-8). */
   async getReorderAlerts(storeId: string) {
-    const stock = await this.listStockOnHand(storeId);
+    // stockRows, not listStockOnHand — sold-out variants must still raise an alert.
+    const stock = await this.stockRows(storeId);
     const variants = await this.prisma.productVariant.findMany({
       where: { id: { in: stock.map((s) => s.variantId) } },
       select: { id: true, reorderPoint: true },

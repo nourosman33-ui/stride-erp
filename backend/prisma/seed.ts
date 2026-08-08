@@ -179,6 +179,25 @@ const VARIANT_COLOR_SETS = [
   ["Brown", "Black"],
 ];
 
+/**
+ * Opening depth per variant, indexed by position within the product's 3-size run.
+ * A real buyer goes deeper on the middle size and keeps the edges shallow, so the curve
+ * is [edge, core, edge] rather than a flat quantity.
+ *
+ * Sized to the owner's declared 100,000 EGP inventory budget:
+ *   24 products x 2 colours x (2+4+2) = 384 pairs at ~259 EGP average cost ≈ 99,500 EGP.
+ * Change this curve and the opening inventory value moves with it — the seed prints the
+ * resulting total so the Financials tab can be sanity-checked against the budget.
+ */
+const SIZE_DEPTH = [2, 4, 2];
+
+/**
+ * Deliberately below the shallowest opening depth (2). Reorder alerts fire at
+ * `quantityOnHand <= reorderPoint`, so a higher value would flag every edge size the
+ * moment stock lands and drown the alert list in day-one noise.
+ */
+const OPENING_REORDER_POINT = 1;
+
 function priceForIndex(i: number): { cost: number; selling: number } {
   // Cycles through the EGP 180-350 cost / 320-650 selling ranges from the spec while
   // keeping a healthy, consistent margin.
@@ -203,7 +222,7 @@ async function seedProductsAndStock(store: { id: string }, suppliers: { id: stri
   const sizeMap = new Map(sizes.map((s) => [s.value, s]));
 
   let barcodeCounter = 900000000001;
-  const allVariants: { id: string; costPrice: number }[] = [];
+  const allVariants: { id: string; costPrice: number; openingQty: number }[] = [];
 
   for (let i = 0; i < PRODUCTS.length; i++) {
     const def = PRODUCTS[i];
@@ -238,7 +257,7 @@ async function seedProductsAndStock(store: { id: string }, suppliers: { id: stri
     const sizeSet = [VARIANT_SIZES[i % 3], VARIANT_SIZES[(i % 3) + 1], VARIANT_SIZES[(i % 3) + 2]];
 
     for (const colorName of colorSet) {
-      for (const sizeValue of sizeSet) {
+      for (const [sizeIndex, sizeValue] of sizeSet.entries()) {
         const barcode = String(barcodeCounter++);
         const sku = `${def.brand.slice(0, 3).toUpperCase()}-${String(i).padStart(3, "0")}-${colorName.slice(0, 3).toUpperCase()}-${sizeValue}`;
         const variant = await prisma.productVariant.create({
@@ -248,10 +267,10 @@ async function seedProductsAndStock(store: { id: string }, suppliers: { id: stri
             sizeValueId: sizeMap.get(sizeValue)!.id,
             barcode,
             sku,
-            reorderPoint: 5,
+            reorderPoint: OPENING_REORDER_POINT,
           },
         });
-        allVariants.push({ id: variant.id, costPrice: cost });
+        allVariants.push({ id: variant.id, costPrice: cost, openingQty: SIZE_DEPTH[sizeIndex] });
       }
     }
   }
@@ -259,22 +278,31 @@ async function seedProductsAndStock(store: { id: string }, suppliers: { id: stri
   // Initial stock — posted as `receipt` ledger entries (the only entry_type valid for
   // adding stock outside a real goods receipt) so stock-on-hand is correct from the
   // start, same derivation InventoryService.getStockOnHand uses everywhere else.
+  let openingUnits = 0;
+  let openingValue = 0;
   for (const v of allVariants) {
-    const qty = 15 + Math.floor(Math.random() * 25); // 15..39 units
     await prisma.stockLedgerEntry.create({
       data: {
         storeId: store.id,
         variantId: v.id,
         entryType: "receipt",
-        quantityDelta: qty,
+        quantityDelta: v.openingQty,
         unitCost: v.costPrice,
         referenceType: "manual",
         performedById: ownerId,
       },
     });
+    openingUnits += v.openingQty;
+    openingValue += v.openingQty * v.costPrice;
   }
 
-  console.log(`Seeded ${PRODUCTS.length} products / ${allVariants.length} variants with opening stock.`);
+  console.log(
+    `Seeded ${PRODUCTS.length} products / ${allVariants.length} variants — ` +
+      `${openingUnits} pairs of opening stock worth ${openingValue.toLocaleString("en-US", {
+        style: "currency",
+        currency: "EGP",
+      })} at cost.`,
+  );
   return allVariants;
 }
 
@@ -299,7 +327,7 @@ async function seedSalesHistory(
   store: { id: string; vatRate: unknown; loyaltyPointsPerCurrency: unknown },
   cashierId: string,
   customers: { id: string }[],
-  variants: { id: string; costPrice: number }[],
+  variants: { id: string; costPrice: number; openingQty: number }[],
 ) {
   const vatRate = Number(store.vatRate);
   const pointsPerCurrency = Number(store.loyaltyPointsPerCurrency);
@@ -315,6 +343,13 @@ async function seedSalesHistory(
   let invoiceSeq = currentStore.invoiceSeq;
   const ORDER_COUNT = 22;
 
+  // Opening stock is intentionally shallow (sized to a 100,000 EGP budget), so demo sales
+  // have to respect it. Picking variants blind would post `sale` ledger rows that exceed
+  // what was ever received and leave stock-on-hand negative — an impossible state that
+  // the POS itself would never allow.
+  const remaining = new Map(variants.map((v) => [v.id, v.openingQty]));
+  let ordersCreated = 0;
+
   for (let i = 0; i < ORDER_COUNT; i++) {
     const daysAgo = Math.floor(Math.random() * 29); // spread across the last ~4 weeks, incl. today
     const orderDate = new Date();
@@ -322,14 +357,18 @@ async function seedSalesHistory(
     orderDate.setHours(9 + Math.floor(Math.random() * 10), Math.floor(Math.random() * 60));
 
     const lineCount = 1 + Math.floor(Math.random() * 3);
-    const chosenVariants = [...variants].sort(() => Math.random() - 0.5).slice(0, lineCount);
+    const sellable = variants.filter((v) => (remaining.get(v.id) ?? 0) > 0);
+    if (sellable.length === 0) break; // sold out — stop rather than go negative
+    const chosenVariants = [...sellable].sort(() => Math.random() - 0.5).slice(0, lineCount);
 
     let subtotal = 0;
     let taxTotal = 0;
     const lineData = chosenVariants.map((v) => {
       const row = variantById.get(v.id)!;
       const unitPrice = Number(row.sellingPriceOverride ?? row.product.baseSellingPrice);
-      const quantity = 1 + Math.floor(Math.random() * 2);
+      const inStock = remaining.get(v.id) ?? 0;
+      const quantity = Math.min(1 + Math.floor(Math.random() * 2), inStock);
+      remaining.set(v.id, inStock - quantity);
       const netPrice = Number((unitPrice * quantity).toFixed(2));
       const taxAmount = Number((netPrice * (vatRate / 100)).toFixed(2));
       subtotal += unitPrice * quantity;
@@ -394,16 +433,70 @@ async function seedSalesHistory(
         },
       });
     }
+
+    ordersCreated += 1;
   }
 
   await prisma.store.update({ where: { id: store.id }, data: { invoiceSeq } });
-  console.log(`Seeded ${ORDER_COUNT} historical sales orders.`);
+  console.log(`Seeded ${ordersCreated} historical sales orders.`);
+}
+
+/**
+ * Opening financial assumptions for the first trading period. These are the owner's
+ * declared operating costs, not derived from transactions, so they live as editable
+ * OperatingExpense rows rather than constants — Financials → Cost Base is the UI for
+ * changing them once real invoices are known.
+ */
+async function seedFinancials(storeId: string, ownerId: string) {
+  const existing = await prisma.operatingExpense.count({ where: { storeId } });
+  if (existing > 0) {
+    console.log(`${existing} operating expense(s) already exist, skipping financial seed.`);
+    return;
+  }
+
+  const startDate = new Date();
+  startDate.setMonth(startDate.getMonth() - 1, 1);
+  startDate.setHours(0, 0, 0, 0);
+
+  await prisma.operatingExpense.createMany({
+    data: [
+      {
+        storeId,
+        category: "rent",
+        label: "Shop rent",
+        amount: 2000,
+        frequency: "monthly",
+        startDate,
+        createdById: ownerId,
+        notes: "Monthly lease on the retail unit.",
+      },
+      {
+        storeId,
+        category: "utilities",
+        label: "Electricity, gas & other utilities",
+        amount: 3000,
+        frequency: "monthly",
+        startDate,
+        createdById: ownerId,
+        notes: "Blended estimate for power, gas, water, internet and sundries.",
+      },
+    ],
+  });
+
+  // Capital, not expense — funds the opening inventory buy-in and drives payback/ROI.
+  await prisma.store.update({
+    where: { id: storeId },
+    data: { initialInvestment: 100000, financialStartDate: startDate },
+  });
+
+  console.log("Seeded opening cost base (rent 2,000 + utilities 3,000 / month) and 100,000 EGP capital.");
 }
 
 async function main() {
   const { owner, cashier } = await seedRolesAndUsers();
   await seedCatalogLookups();
   const store = await seedStore(owner.id);
+  await seedFinancials(store.id, owner.id);
   const suppliers = await seedSuppliers();
 
   const seededBrands = [...new Set(PRODUCTS.map((p) => p.brand))];
