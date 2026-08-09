@@ -11,6 +11,8 @@ function buildPrismaMock() {
     },
     productVariant: { findMany: jest.fn() },
     movementStatusRule: { findUnique: jest.fn() },
+    // revalueStock runs its compensating entries in one transaction.
+    $transaction: jest.fn((cb) => cb({ stockLedgerEntry: { create: jest.fn() } })),
   };
 }
 
@@ -194,5 +196,96 @@ describe("InventoryService", () => {
       const result = await service.getMovementStatus("s1", "v1");
       expect(result.status).toBe("No Stock Received");
     });
+  });
+});
+
+describe("InventoryService.revalueStock — correcting stock booked at the wrong cost", () => {
+  let prisma: ReturnType<typeof buildPrismaMock>;
+  let service: InventoryService;
+  let posted: Record<string, unknown>[];
+
+  beforeEach(() => {
+    prisma = buildPrismaMock();
+    service = new InventoryService(prisma as any);
+    posted = [];
+    // Capture what the revaluation writes instead of hitting a database.
+    jest.spyOn(service, "postStockMovement").mockImplementation(async (params: never) => {
+      posted.push(params);
+      return params as never;
+    });
+  });
+
+  /** on-hand = `onHand`; costed receipts totalling `receiptQty` at `unitCost`. */
+  function primeStock(onHand: number, receiptQty: number, unitCost: number | null) {
+    prisma.stockLedgerEntry.aggregate.mockResolvedValue({ _sum: { quantityDelta: onHand } });
+    prisma.stockLedgerEntry.findMany.mockResolvedValue(
+      receiptQty > 0 ? [{ quantityDelta: receiptQty, unitCost }] : [],
+    );
+  }
+
+  it("reverses the old cost and re-books at the new one, leaving quantity untouched", async () => {
+    primeStock(10, 10, 0); // 10 units booked at 0 — the reported bug
+    const result = await service.revalueStock({
+      storeId: "s1",
+      variantId: "v1",
+      newUnitCost: 250,
+      performedById: "u1",
+    });
+
+    expect(posted).toHaveLength(2);
+    expect(posted[0]).toMatchObject({ entryType: "receipt", quantityDelta: -10, unitCost: 0 });
+    expect(posted[1]).toMatchObject({ entryType: "receipt", quantityDelta: 10, unitCost: 250 });
+    // The two entries cancel, so stock on hand cannot move.
+    expect((posted[0].quantityDelta as number) + (posted[1].quantityDelta as number)).toBe(0);
+    expect(result).toMatchObject({ previousUnitCost: 0, newUnitCost: 250, inventoryValue: 2500 });
+  });
+
+  it("produces a weighted average equal to the new cost", async () => {
+    primeStock(10, 10, 0);
+    await service.revalueStock({ storeId: "s1", variantId: "v1", newUnitCost: 250, performedById: "u1" });
+
+    // Replay the arithmetic getWeightedAverageCost would do over the resulting rows.
+    const rows = [{ quantityDelta: 10, unitCost: 0 }, ...posted.map((p) => ({
+      quantityDelta: p.quantityDelta as number,
+      unitCost: (p.unitCost as number) ?? 0,
+    }))];
+    const qty = rows.reduce((s, r) => s + r.quantityDelta, 0);
+    const cost = rows.reduce((s, r) => s + r.quantityDelta * r.unitCost, 0);
+    expect(cost / qty).toBe(250);
+  });
+
+  it("costs stock that only ever arrived by adjustment, without changing quantity", async () => {
+    primeStock(8, 0, null); // no costed receipts at all
+    await service.revalueStock({ storeId: "s1", variantId: "v1", newUnitCost: 100, performedById: "u1" });
+
+    expect(posted[0]).toMatchObject({ entryType: "receipt", quantityDelta: 8, unitCost: 100 });
+    // Adjustments are excluded from the average, so this cancels the qty but not the cost.
+    expect(posted[1]).toMatchObject({ entryType: "adjustment", quantityDelta: -8 });
+    expect((posted[0].quantityDelta as number) + (posted[1].quantityDelta as number)).toBe(0);
+  });
+
+  it("refuses to revalue an item with no stock on hand", async () => {
+    primeStock(0, 0, null);
+    await expect(
+      service.revalueStock({ storeId: "s1", variantId: "v1", newUnitCost: 100, performedById: "u1" }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(posted).toHaveLength(0);
+  });
+
+  it("rejects a negative cost", async () => {
+    primeStock(10, 10, 50);
+    await expect(
+      service.revalueStock({ storeId: "s1", variantId: "v1", newUnitCost: -5, performedById: "u1" }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("tags both entries as a revaluation so the ledger explains itself", async () => {
+    primeStock(10, 10, 0);
+    await service.revalueStock({
+      storeId: "s1", variantId: "v1", newUnitCost: 250, performedById: "u1", reason: "priced_after_stocking",
+    });
+    for (const p of posted) {
+      expect(p).toMatchObject({ referenceType: "revaluation", reasonCode: "priced_after_stocking" });
+    }
   });
 });

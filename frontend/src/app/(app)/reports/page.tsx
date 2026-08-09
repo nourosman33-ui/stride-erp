@@ -19,7 +19,7 @@ import { listPurchaseOrders } from "@/lib/api/purchasing";
 import { listSuppliers } from "@/lib/api/suppliers";
 import { listProducts } from "@/lib/api/catalog";
 import { formatMoney, formatNumber } from "@/lib/format";
-import { CATEGORICAL, CHART_INK } from "@/lib/chart-colors";
+import { CATEGORICAL, CHART_INK, CHART_TOOLTIP_STYLE, CHART_TOOLTIP_LABEL_STYLE } from "@/lib/chart-colors";
 import { PageHeader } from "@/components/layout/page-header";
 import { NoStoreSelected } from "@/components/no-store-selected";
 import { StatTile } from "@/components/stat-tile";
@@ -138,7 +138,7 @@ export default function ReportsPage() {
                   <Tooltip
                     cursor={{ fill: "rgba(0,0,0,0.04)" }}
                     formatter={(value) => formatMoney(value as number, activeStore?.currency)}
-                    contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                    contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE}
                   />
                   <Bar dataKey="value" fill={CATEGORICAL[0]} radius={[0, 4, 4, 0]} maxBarSize={22} />
                 </BarChart>
@@ -160,7 +160,7 @@ export default function ReportsPage() {
                   <CartesianGrid vertical={false} stroke={CHART_INK.gridline} />
                   <XAxis dataKey="label" stroke={CHART_INK.muted} fontSize={11} />
                   <YAxis allowDecimals={false} stroke={CHART_INK.muted} fontSize={12} />
-                  <Tooltip cursor={{ fill: "rgba(0,0,0,0.04)" }} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                  <Tooltip cursor={{ fill: "rgba(0,0,0,0.04)" }} contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} />
                   <Bar dataKey="count" radius={[4, 4, 0, 0]} maxBarSize={40} fill={CATEGORICAL[0]} />
                 </BarChart>
               </ResponsiveContainer>

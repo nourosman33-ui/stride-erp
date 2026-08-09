@@ -39,8 +39,10 @@ import { useAuth } from "@/lib/auth-context";
 import { useActiveStore } from "@/lib/store-context";
 import { useLocale, type TranslationKey } from "@/lib/i18n/locale-context";
 import { formatMoney, formatNumber } from "@/lib/format";
-import { CHART_INK } from "@/lib/chart-colors";
+import { CHART_INK, CHART_TOOLTIP_STYLE, CHART_TOOLTIP_LABEL_STYLE } from "@/lib/chart-colors";
 import { PageHeader } from "@/components/layout/page-header";
+import { ExportButton } from "@/components/export-button";
+import { ForecastSection } from "@/components/forecast-section";
 import { NoStoreSelected } from "@/components/no-store-selected";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -430,7 +432,12 @@ export default function FinancialsPage() {
       <PageHeader
         title={t("financials.title")}
         description={activeStore?.name}
-        actions={activeStoreId ? <AddExpenseDialog storeId={activeStoreId} /> : undefined}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <ExportButton kind="financials" storeId={activeStoreId} />
+            {activeStoreId && <AddExpenseDialog storeId={activeStoreId} />}
+          </div>
+        }
       />
 
       <div className="flex flex-wrap gap-1.5">
@@ -699,7 +706,7 @@ export default function FinancialsPage() {
               />
               <YAxis stroke={CHART_INK.muted} fontSize={11} width={64} />
               <Tooltip
-                contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE}
                 formatter={(value) => formatMoney(Number(value ?? 0), cur)}
               />
               <Legend wrapperStyle={{ fontSize: 12 }} />
@@ -731,6 +738,8 @@ export default function FinancialsPage() {
           </ResponsiveContainer>
         </CardContent>
       </Card>
+
+      {activeStoreId && <ForecastSection storeId={activeStoreId} />}
 
       <Card>
         <CardHeader>

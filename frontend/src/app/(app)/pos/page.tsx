@@ -13,6 +13,7 @@ import {
   Search,
   ShoppingCart,
   Trash2,
+  UserPlus,
   UserRound,
   X,
 } from "lucide-react";
@@ -21,7 +22,7 @@ import { toast } from "sonner";
 import { useActiveStore } from "@/lib/store-context";
 import { useLocale, type TranslationKey } from "@/lib/i18n/locale-context";
 import { checkout, getPosCatalog, type PosCatalogItem } from "@/lib/api/sales";
-import { getCustomerByPhone } from "@/lib/api/customers";
+import { createCustomer, getCustomerByPhone } from "@/lib/api/customers";
 import type { CustomerWithStats, PaymentMethodType, SalesOrder } from "@/lib/api/types";
 import { formatDateTime, formatMoney, toNumber } from "@/lib/format";
 import { PageHeader } from "@/components/layout/page-header";
@@ -83,10 +84,14 @@ function groupByProduct(items: PosCatalogItem[]): GroupedProduct[] {
   return Array.from(map.values());
 }
 
-type SelectedCustomer =
-  | { kind: "existing"; customer: CustomerWithStats }
-  | { kind: "new"; name: string; phone: string }
-  | null;
+/**
+ * Always a real, saved Customer row. The POS used to hold an unsaved
+ * `{ name, phone }` and let SalesService create it during checkout, which meant
+ * abandoning the sale silently threw the customer away and nothing reached the
+ * customer list until money changed hands. Quick-add now writes through
+ * POST /customers immediately, so the record exists the moment it is created.
+ */
+type SelectedCustomer = CustomerWithStats | null;
 
 function computeTierLocal(
   lifetimeSpending: number,
@@ -96,6 +101,104 @@ function computeTierLocal(
   if (lifetimeSpending >= thresholds.gold) return "gold";
   if (lifetimeSpending >= thresholds.silver) return "silver";
   return "bronze";
+}
+
+/**
+ * Saves the customer straight away (POST /customers) rather than deferring to checkout,
+ * so they land in Customers → list immediately and are reusable on the next visit even
+ * if this sale is never completed. `onCreated` attaches them to the sale in progress.
+ */
+function QuickAddCustomerDialog({
+  open,
+  onOpenChange,
+  presetPhone,
+  onCreated,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  presetPhone?: string;
+  onCreated: (customer: CustomerWithStats) => void;
+}) {
+  const { t } = useLocale();
+  const queryClient = useQueryClient();
+  const [name, setName] = React.useState("");
+  const [phone, setPhone] = React.useState("");
+  const [email, setEmail] = React.useState("");
+
+  // Carry over whatever phone the cashier already typed into the search box.
+  React.useEffect(() => {
+    if (open) {
+      setName("");
+      setPhone(presetPhone ?? "");
+      setEmail("");
+    }
+  }, [open, presetPhone]);
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      createCustomer({
+        name: name.trim(),
+        phone: phone.trim() || undefined,
+        email: email.trim() || undefined,
+      }),
+    onSuccess: (customer) => {
+      // Refresh the main directory so the new record is there without a reload.
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      queryClient.invalidateQueries({ queryKey: ["customer-by-phone"] });
+      // A brand-new customer has no history yet, so the stats are zero by definition.
+      onCreated({
+        ...customer,
+        totalOrders: 0,
+        lifetimeSpending: 0,
+        lastPurchaseAt: null,
+        pointsBalance: 0,
+      });
+      toast.success(t("pos.customerCreated", { name: customer.name }));
+      onOpenChange(false);
+    },
+    onError: (err) =>
+      toast.error(err instanceof Error ? err.message : t("pos.customerCreateFailed")),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t("pos.quickAddCustomerTitle")}</DialogTitle>
+          <DialogDescription>{t("pos.quickAddCustomerHint")}</DialogDescription>
+        </DialogHeader>
+        <form
+          className="space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!name.trim()) return toast.error(t("pos.customerNameRequired"));
+            mutation.mutate();
+          }}
+        >
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">{t("customers.name")}</label>
+            <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">{t("customers.phoneOptional")}</label>
+              <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">{t("customers.emailOptional")}</label>
+              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="submit" disabled={mutation.isPending || !name.trim()}>
+              {mutation.isPending && <Loader2 className="size-4 animate-spin" />}
+              {t("pos.saveCustomer")}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 export default function PosPage() {
@@ -135,11 +238,11 @@ export default function PosPage() {
   const [completedOrder, setCompletedOrder] = React.useState<SalesOrder | null>(null);
   const [pickerProduct, setPickerProduct] = React.useState<GroupedProduct | null>(null);
 
-  // Customer / loyalty (FR: search-by-phone at checkout, create-inline if not found).
+  // Customer / loyalty (FR: search-by-phone at checkout, quick-add if not found).
   const [phoneQuery, setPhoneQuery] = React.useState("");
   const [debouncedPhone, setDebouncedPhone] = React.useState("");
-  const [newCustomerName, setNewCustomerName] = React.useState("");
   const [selectedCustomer, setSelectedCustomer] = React.useState<SelectedCustomer>(null);
+  const [quickAddOpen, setQuickAddOpen] = React.useState(false);
   const [redeemPoints, setRedeemPoints] = React.useState(0);
   const [amountTendered, setAmountTendered] = React.useState("");
 
@@ -216,7 +319,6 @@ export default function PosPage() {
   function resetCustomer() {
     setSelectedCustomer(null);
     setPhoneQuery("");
-    setNewCustomerName("");
     setRedeemPoints(0);
   }
 
@@ -231,7 +333,7 @@ export default function PosPage() {
   const hasOversell = cart.some((l) => l.quantity > l.item.quantityOnHand);
 
   const pointValue = toNumber(activeStore?.loyaltyPointValue ?? 1) || 1;
-  const customerPointsBalance = selectedCustomer?.kind === "existing" ? selectedCustomer.customer.pointsBalance : 0;
+  const customerPointsBalance = selectedCustomer?.pointsBalance ?? 0;
   const maxRedeemable = Math.max(0, Math.min(customerPointsBalance, Math.floor(grandTotal / pointValue)));
   React.useEffect(() => {
     if (redeemPoints > maxRedeemable) setRedeemPoints(maxRedeemable);
@@ -253,11 +355,8 @@ export default function PosPage() {
     mutationFn: () =>
       checkout({
         storeId: activeStoreId!,
-        customerId: selectedCustomer?.kind === "existing" ? selectedCustomer.customer.id : undefined,
-        newCustomer:
-          selectedCustomer?.kind === "new"
-            ? { name: selectedCustomer.name, phone: selectedCustomer.phone || undefined }
-            : undefined,
+        // Always an id now — quick-add saves the customer before checkout runs.
+        customerId: selectedCustomer?.id,
         lines: cart.map((l) => ({
           variantId: l.item.variantId,
           quantity: l.quantity,
@@ -458,15 +557,11 @@ export default function PosPage() {
                   <div className="flex items-center gap-2">
                     <UserRound className="size-4 text-muted-foreground" />
                     <div>
-                      <p className="text-sm font-medium">
-                        {selectedCustomer.kind === "existing" ? selectedCustomer.customer.name : selectedCustomer.name}
-                      </p>
+                      <p className="text-sm font-medium">{selectedCustomer.name}</p>
                       <p className="text-xs text-muted-foreground">
-                        {selectedCustomer.kind === "existing"
-                          ? `${selectedCustomer.customer.phone ?? ""} · ${selectedCustomer.customer.pointsBalance} pts · ${t(
-                              `loyaltyTiers.${computeTierLocal(selectedCustomer.customer.lifetimeSpending, thresholds)}` as TranslationKey,
-                            )}`
-                          : selectedCustomer.phone}
+                        {`${selectedCustomer.phone ?? ""} · ${selectedCustomer.pointsBalance} pts · ${t(
+                          `loyaltyTiers.${computeTierLocal(selectedCustomer.lifetimeSpending, thresholds)}` as TranslationKey,
+                        )}`}
                       </p>
                     </div>
                   </div>
@@ -493,7 +588,7 @@ export default function PosPage() {
                         <button
                           type="button"
                           className="flex w-full items-center justify-between text-start hover:opacity-80"
-                          onClick={() => setSelectedCustomer({ kind: "existing", customer: foundCustomer })}
+                          onClick={() => setSelectedCustomer(foundCustomer)}
                         >
                           <span>
                             {t("pos.customerFound", {
@@ -506,32 +601,25 @@ export default function PosPage() {
                           </span>
                         </button>
                       ) : (
-                        <div className="space-y-2">
-                          <p className="text-muted-foreground">{t("pos.customerNotFound")}</p>
-                          <Input
-                            value={newCustomerName}
-                            onChange={(e) => setNewCustomerName(e.target.value)}
-                            placeholder={t("pos.newCustomerNamePlaceholder")}
-                          />
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            disabled={!newCustomerName.trim()}
-                            onClick={() =>
-                              setSelectedCustomer({ kind: "new", name: newCustomerName.trim(), phone: debouncedPhone })
-                            }
-                          >
-                            {t("pos.createCustomerInline", { name: newCustomerName.trim() || "…" })}
-                          </Button>
-                        </div>
+                        <p className="text-muted-foreground">{t("pos.customerNotFound")}</p>
                       )}
                     </div>
                   )}
+                  {/* Always available, not just after a failed lookup — a cashier can add a
+                      walk-in to the directory at any point in the sale. */}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => setQuickAddOpen(true)}
+                  >
+                    <UserPlus className="size-4" />
+                    {t("pos.quickAddCustomer")}
+                  </Button>
                 </>
               )}
 
-              {selectedCustomer?.kind === "existing" && maxRedeemable > 0 && (
+              {selectedCustomer && maxRedeemable > 0 && (
                 <div className="space-y-1.5 border-t pt-2">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">{t("pos.redeemPoints")}</span>
@@ -681,6 +769,16 @@ export default function PosPage() {
           </Card>
         </div>
       </div>
+
+      <QuickAddCustomerDialog
+        open={quickAddOpen}
+        onOpenChange={setQuickAddOpen}
+        presetPhone={phoneQuery.trim()}
+        onCreated={(customer) => {
+          setSelectedCustomer(customer);
+          setPhoneQuery("");
+        }}
+      />
 
       <Dialog open={!!pickerProduct} onOpenChange={(open) => !open && setPickerProduct(null)}>
         <DialogContent>

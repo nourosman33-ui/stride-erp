@@ -12,6 +12,7 @@ import { CustomersModule } from "./modules/customers/customers.module";
 import { AiModule } from "./modules/ai/ai.module";
 import { FinanceModule } from "./modules/finance/finance.module";
 import { ReturnsModule } from "./modules/returns/returns.module";
+import { ExportModule } from "./modules/export/export.module";
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { ReturnsModule } from "./modules/returns/returns.module";
     AiModule,
     FinanceModule,
     ReturnsModule,
+    ExportModule,
   ],
 })
 export class AppModule {}

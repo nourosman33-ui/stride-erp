@@ -2,11 +2,24 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Check, Globe, LogOut, Menu, Package2, Store as StoreIcon, User as UserIcon } from "lucide-react";
+import {
+  Check,
+  Globe,
+  LogOut,
+  Menu,
+  Monitor,
+  Moon,
+  Package2,
+  Palette,
+  Store as StoreIcon,
+  Sun,
+  User as UserIcon,
+} from "lucide-react";
 
 import { useAuth } from "@/lib/auth-context";
 import { useActiveStore } from "@/lib/store-context";
-import { useLocale, type Locale } from "@/lib/i18n/locale-context";
+import { useLocale, type Locale, type TranslationKey } from "@/lib/i18n/locale-context";
+import { ACCENTS, ACCENT_SWATCH, useTheme, type Accent, type ThemeMode } from "@/lib/theme-context";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -50,6 +63,79 @@ function LanguageSwitcher() {
             {locale === lang.value && <Check className="ms-auto size-4" />}
           </DropdownMenuItem>
         ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+const MODE_OPTIONS: { value: ThemeMode; labelKey: TranslationKey; icon: typeof Sun }[] = [
+  { value: "light", labelKey: "theme.light", icon: Sun },
+  { value: "dark", labelKey: "theme.dark", icon: Moon },
+  { value: "system", labelKey: "theme.system", icon: Monitor },
+];
+
+const ACCENT_LABEL: Record<Accent, TranslationKey> = {
+  graphite: "theme.accentGraphite",
+  blue: "theme.accentBlue",
+  emerald: "theme.accentEmerald",
+  violet: "theme.accentViolet",
+  amber: "theme.accentAmber",
+  rose: "theme.accentRose",
+};
+
+function ThemeSwitcher() {
+  const { t } = useLocale();
+  const { mode, setMode, accent, setAccent, resolvedMode } = useTheme();
+  const ActiveIcon = mode === "system" ? Monitor : resolvedMode === "dark" ? Moon : Sun;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" title={t("theme.title")}>
+          <ActiveIcon className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel>{t("theme.appearance")}</DropdownMenuLabel>
+        {MODE_OPTIONS.map((opt) => {
+          const Icon = opt.icon;
+          return (
+            <DropdownMenuItem key={opt.value} onClick={() => setMode(opt.value)}>
+              <Icon className="size-4" />
+              {t(opt.labelKey)}
+              {mode === opt.value && <Check className="ms-auto size-4" />}
+            </DropdownMenuItem>
+          );
+        })}
+
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel className="flex items-center gap-2">
+          <Palette className="size-4" />
+          {t("theme.accent")}
+        </DropdownMenuLabel>
+        <div className="grid grid-cols-3 gap-1 p-1">
+          {ACCENTS.map((a) => (
+            <button
+              key={a}
+              type="button"
+              onClick={() => setAccent(a)}
+              title={t(ACCENT_LABEL[a])}
+              aria-label={t(ACCENT_LABEL[a])}
+              aria-pressed={accent === a}
+              className={`flex flex-col items-center gap-1 rounded-md px-1.5 py-1.5 text-[11px] transition hover:bg-accent ${
+                accent === a ? "bg-accent font-medium" : ""
+              }`}
+            >
+              <span
+                className="flex size-5 items-center justify-center rounded-full border"
+                style={{ backgroundColor: ACCENT_SWATCH[a] }}
+              >
+                {accent === a && <Check className="size-3 text-white drop-shadow" />}
+              </span>
+              {t(ACCENT_LABEL[a])}
+            </button>
+          ))}
+        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -122,6 +208,7 @@ export function AppTopbar() {
             {user.roles.map((role) => t(`roles.${role}`)).join(", ")}
           </Badge>
         )}
+        <ThemeSwitcher />
         <LanguageSwitcher />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

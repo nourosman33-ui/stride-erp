@@ -41,6 +41,14 @@
   --success-foreground: oklch(0.985 0 0);
   --warning: oklch(0.75 0.15 75);
   --warning-foreground: oklch(0.145 0 0);
+  /* Chart furniture (axes, gridlines, labels). Kept as variables rather than the
+     hardcoded hexes chart-colors.ts used to export, so charts follow light/dark —
+     a light gridline glares on a dark canvas and near-black axis text disappears. */
+  --chart-ink-primary: #0b0b0b;
+  --chart-ink-secondary: #52514e;
+  --chart-ink-muted: #898781;
+  --chart-ink-gridline: #e1e0d9;
+  --chart-ink-baseline: #c3c2b7;
 }
 
 .dark {
@@ -80,6 +88,99 @@
   --success-foreground: oklch(0.145 0 0);
   --warning: oklch(0.8 0.15 75);
   --warning-foreground: oklch(0.145 0 0);
+  --chart-ink-primary: #f5f5f4;
+  --chart-ink-secondary: #b8b6b0;
+  --chart-ink-muted: #8a8880;
+  --chart-ink-gridline: #2e2e2c;
+  --chart-ink-baseline: #45443f;
+}
+
+/* ---------------------------------------------------------------------------
+   Accent themes. `data-accent` is set on <html> by ThemeProvider (and by the
+   no-flash script in layout.tsx before first paint). Each accent only overrides
+   the handful of tokens that carry brand colour — everything else keeps inheriting
+   the light/dark palette above, so a new accent can never break contrast on
+   surfaces, borders or text.
+
+   Each needs a light AND a dark variant: the same hue has to be darker on white
+   and lighter on near-black to stay readable in both.
+   --------------------------------------------------------------------------- */
+
+[data-accent="blue"] {
+  --primary: oklch(0.54 0.2 260);
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.54 0.2 260);
+  --sidebar-primary: oklch(0.54 0.2 260);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+}
+.dark[data-accent="blue"] {
+  --primary: oklch(0.7 0.16 260);
+  --primary-foreground: oklch(0.16 0.03 260);
+  --ring: oklch(0.7 0.16 260);
+  --sidebar-primary: oklch(0.7 0.16 260);
+  --sidebar-primary-foreground: oklch(0.16 0.03 260);
+}
+
+[data-accent="emerald"] {
+  --primary: oklch(0.55 0.14 162);
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.55 0.14 162);
+  --sidebar-primary: oklch(0.55 0.14 162);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+}
+.dark[data-accent="emerald"] {
+  --primary: oklch(0.72 0.14 162);
+  --primary-foreground: oklch(0.16 0.03 162);
+  --ring: oklch(0.72 0.14 162);
+  --sidebar-primary: oklch(0.72 0.14 162);
+  --sidebar-primary-foreground: oklch(0.16 0.03 162);
+}
+
+[data-accent="violet"] {
+  --primary: oklch(0.53 0.22 295);
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.53 0.22 295);
+  --sidebar-primary: oklch(0.53 0.22 295);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+}
+.dark[data-accent="violet"] {
+  --primary: oklch(0.7 0.17 295);
+  --primary-foreground: oklch(0.16 0.03 295);
+  --ring: oklch(0.7 0.17 295);
+  --sidebar-primary: oklch(0.7 0.17 295);
+  --sidebar-primary-foreground: oklch(0.16 0.03 295);
+}
+
+/* Amber is light enough that white-on-amber fails contrast — it takes dark text
+   in BOTH modes, unlike every other accent here. */
+[data-accent="amber"] {
+  --primary: oklch(0.72 0.16 70);
+  --primary-foreground: oklch(0.2 0.03 70);
+  --ring: oklch(0.72 0.16 70);
+  --sidebar-primary: oklch(0.72 0.16 70);
+  --sidebar-primary-foreground: oklch(0.2 0.03 70);
+}
+.dark[data-accent="amber"] {
+  --primary: oklch(0.8 0.15 70);
+  --primary-foreground: oklch(0.18 0.03 70);
+  --ring: oklch(0.8 0.15 70);
+  --sidebar-primary: oklch(0.8 0.15 70);
+  --sidebar-primary-foreground: oklch(0.18 0.03 70);
+}
+
+[data-accent="rose"] {
+  --primary: oklch(0.57 0.21 15);
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.57 0.21 15);
+  --sidebar-primary: oklch(0.57 0.21 15);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+}
+.dark[data-accent="rose"] {
+  --primary: oklch(0.71 0.17 15);
+  --primary-foreground: oklch(0.16 0.03 15);
+  --ring: oklch(0.71 0.17 15);
+  --sidebar-primary: oklch(0.71 0.17 15);
+  --sidebar-primary-foreground: oklch(0.16 0.03 15);
 }
 
 @theme inline {

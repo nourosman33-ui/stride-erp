@@ -31,3 +31,27 @@ export interface CreateAdjustmentInput {
 export function createAdjustment(input: CreateAdjustmentInput) {
   return apiFetch<StockLedgerEntry>("/inventory/adjustments", { method: "POST", body: input });
 }
+
+export interface RevalueStockInput {
+  storeId: string;
+  variantId: string;
+  newUnitCost: number;
+  reason?: string;
+}
+
+export interface RevalueStockResult {
+  variantId: string;
+  quantityOnHand: number;
+  previousUnitCost: number | null;
+  newUnitCost: number;
+  inventoryValue: number;
+}
+
+/**
+ * Corrects the cost of stock already on hand. Editing a product's price only affects
+ * future receipts — stock already booked keeps the cost stamped on its ledger entry,
+ * so this is the only way to fix stock that was added before the price was set.
+ */
+export function revalueStock(input: RevalueStockInput) {
+  return apiFetch<RevalueStockResult>("/inventory/revalue", { method: "POST", body: input });
+}

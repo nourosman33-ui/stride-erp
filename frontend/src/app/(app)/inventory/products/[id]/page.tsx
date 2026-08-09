@@ -20,6 +20,8 @@ import {
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { PageHeader } from "@/components/layout/page-header";
+import { EditProductDialog, DeleteProductButton } from "@/components/product-manage";
+import { useAuth } from "@/lib/auth-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -322,6 +324,7 @@ function UpdatePriceDialog({
 
 export default function ProductDetailPage() {
   const { t } = useLocale();
+  const { hasRole } = useAuth();
   const params = useParams<{ id: string }>();
   const productId = params.id;
 
@@ -350,10 +353,15 @@ export default function ProductDetailPage() {
         title={product.modelName}
         description={`${product.category?.name ?? ""} · ${product.gender?.name ?? ""} · ${product.productType?.name ?? ""}`}
         actions={
-          <UpdatePriceDialog
-            productId={productId}
-            variants={(product.variants ?? []).map((v) => ({ id: v.id, barcode: v.barcode }))}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <UpdatePriceDialog
+              productId={productId}
+              variants={(product.variants ?? []).map((v) => ({ id: v.id, barcode: v.barcode }))}
+            />
+            <EditProductDialog product={product} />
+            {/* Destroying catalog records is an owner decision. */}
+            {hasRole("owner") && <DeleteProductButton product={product} />}
+          </div>
         }
       />
 

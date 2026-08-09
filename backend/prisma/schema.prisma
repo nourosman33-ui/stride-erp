@@ -80,6 +80,7 @@ model Store {
   aiConversations     AiConversation[]
   operatingExpenses   OperatingExpense[]
   salesReturns        SalesReturn[]
+  feedTokens          FeedToken[]
 
   @@map("store")
 }
@@ -107,6 +108,7 @@ model User {
   aiConversations              AiConversation[]     @relation("AiConversationOwner")
   operatingExpensesCreated     OperatingExpense[]   @relation("ExpenseCreatedBy")
   salesReturnsProcessed        SalesReturn[]        @relation("ReturnProcessedBy")
+  feedTokensCreated            FeedToken[]          @relation("FeedTokenCreatedBy")
 
   @@map("app_user")
 }
@@ -869,4 +871,34 @@ model SalesReturnLine {
   @@index([returnId])
   @@index([orderLineId])
   @@map("sales_return_line")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 6 — Excel live feeds
+// ---------------------------------------------------------------------------
+
+/**
+ * Bearer-in-URL credential for spreadsheet feeds. Excel's Data → From Web cannot send
+ * an Authorization header, so the secret travels in the path — the same trade-off
+ * calendar (.ics) and "publish to web" links make. Consequences, handled deliberately:
+ *   - the token is long and random (not guessable, not derived from the store id)
+ *   - it is READ-ONLY and scoped to one store's reporting feeds
+ *   - it is revocable, and `lastUsedAt` shows whether a leaked link is being used
+ * Anyone holding the URL can read that store's figures, so the UI says so plainly.
+ */
+model FeedToken {
+  id          String    @id @default(uuid())
+  token       String    @unique
+  storeId     String    @map("store_id")
+  label       String
+  createdById String    @map("created_by")
+  lastUsedAt  DateTime? @map("last_used_at")
+  revokedAt   DateTime? @map("revoked_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  store     Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  createdBy User  @relation("FeedTokenCreatedBy", fields: [createdById], references: [id])
+
+  @@index([storeId])
+  @@map("feed_token")
 }

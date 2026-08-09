@@ -131,3 +131,66 @@ export function updatePrice(productId: string, input: UpdatePriceInput) {
 export function getPriceHistory(productId: string) {
   return apiFetch<PriceHistoryEntry[]>(`/products/${productId}/price-history`);
 }
+
+export interface UpdateProductInput {
+  modelName?: string;
+  categoryId?: string;
+  genderId?: string;
+  productTypeId?: string;
+  brand?: string;
+  baseCostPrice?: number;
+  baseSellingPrice?: number;
+  description?: string;
+  imageUrl?: string;
+  isActive?: boolean;
+}
+
+export function updateProduct(id: string, input: UpdateProductInput) {
+  return apiFetch<Product>(`/products/${id}`, { method: "PATCH", body: input });
+}
+
+export interface UpdateVariantInput {
+  barcode?: string;
+  sku?: string;
+  costPriceOverride?: number;
+  sellingPriceOverride?: number;
+  reorderPoint?: number;
+  isActive?: boolean;
+}
+
+export function updateVariant(variantId: string, input: UpdateVariantInput) {
+  return apiFetch<ProductVariant>(`/products/variants/${variantId}`, {
+    method: "PATCH",
+    body: input,
+  });
+}
+
+export interface DeletionImpact {
+  productId: string;
+  modelName: string;
+  variantCount: number;
+  salesLines: number;
+  stockLedgerEntries: number;
+  purchaseOrderLines: number;
+  /** False when history exists — the product is deactivated rather than destroyed. */
+  canHardDelete: boolean;
+  reason: string;
+}
+
+export function getDeletionImpact(productId: string) {
+  return apiFetch<DeletionImpact>(`/products/${productId}/deletion-impact`);
+}
+
+export function deleteProduct(productId: string) {
+  return apiFetch<{ productId: string; mode: "deleted" | "deactivated"; modelName: string }>(
+    `/products/${productId}`,
+    { method: "DELETE" },
+  );
+}
+
+export function deleteVariant(variantId: string) {
+  return apiFetch<{ variantId: string; mode: "deleted" | "deactivated" }>(
+    `/products/variants/${variantId}`,
+    { method: "DELETE" },
+  );
+}

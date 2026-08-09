@@ -10,6 +10,7 @@ import { useActiveStore } from "@/lib/store-context";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { PageHeader } from "@/components/layout/page-header";
+import { ExportButton } from "@/components/export-button";
 import { NoStoreSelected } from "@/components/no-store-selected";
 import { SalesOrderStatusBadge } from "@/components/status-badge";
 import { PAYMENT_METHOD_KEY } from "@/lib/payment-methods";
@@ -49,7 +50,11 @@ export default function SalesHistoryPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title={t("salesHistory.title")} description={activeStore?.name} />
+      <PageHeader
+        title={t("salesHistory.title")}
+        description={activeStore?.name}
+        actions={<ExportButton kind="sales" storeId={activeStoreId} />}
+      />
 
       <div className="relative max-w-md">
         <Search className="absolute top-1/2 start-3 size-4 -translate-y-1/2 text-muted-foreground" />

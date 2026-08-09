@@ -9,6 +9,8 @@ import { useActiveStore } from "@/lib/store-context";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { formatMoney, formatNumber } from "@/lib/format";
 import { PageHeader } from "@/components/layout/page-header";
+import { ExportButton } from "@/components/export-button";
+import { FixCostDialog } from "@/components/fix-cost-dialog";
 import { NoStoreSelected } from "@/components/no-store-selected";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -50,6 +52,7 @@ export default function StockOnHandPage() {
             ? t("stock.descriptionWithTotal", { store: activeStore.name, value: formatMoney(totalValue, activeStore.currency) })
             : undefined
         }
+        actions={<ExportButton kind="stock" storeId={activeStoreId} />}
       />
 
       <div className="relative max-w-sm">
@@ -73,20 +76,21 @@ export default function StockOnHandPage() {
               <TableHead className="text-end">{t("stock.colQtyOnHand")}</TableHead>
               <TableHead className="text-end">{t("stock.colAvgUnitCost")}</TableHead>
               <TableHead className="text-end">{t("stock.colValue")}</TableHead>
+              <TableHead />
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               Array.from({ length: 6 }).map((_, i) => (
                 <TableRow key={i}>
-                  <TableCell colSpan={7}>
+                  <TableCell colSpan={8}>
                     <Skeleton className="h-6 w-full" />
                   </TableCell>
                 </TableRow>
               ))
             ) : filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
                   {t("stock.noStock")}
                 </TableCell>
               </TableRow>
@@ -103,10 +107,25 @@ export default function StockOnHandPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-end">
-                    {row.avgUnitCost !== null ? formatMoney(row.avgUnitCost, activeStore?.currency) : "—"}
+                    {row.avgUnitCost !== null ? (
+                      <span className={!row.avgUnitCost ? "text-destructive" : undefined}>
+                        {formatMoney(row.avgUnitCost, activeStore?.currency)}
+                      </span>
+                    ) : (
+                      <span className="text-destructive">—</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-end font-medium">
                     {row.inventoryValue !== null ? formatMoney(row.inventoryValue, activeStore?.currency) : "—"}
+                  </TableCell>
+                  <TableCell className="text-end">
+                    {activeStoreId && (
+                      <FixCostDialog
+                        row={row}
+                        storeId={activeStoreId}
+                        currency={activeStore?.currency}
+                      />
+                    )}
                   </TableCell>
                 </TableRow>
               ))

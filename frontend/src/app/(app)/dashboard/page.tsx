@@ -28,7 +28,7 @@ import { listPurchaseOrders } from "@/lib/api/purchasing";
 import { listSuppliers } from "@/lib/api/suppliers";
 import { listProducts } from "@/lib/api/catalog";
 import { formatMoney, formatNumber } from "@/lib/format";
-import { PO_STATUS_COLOR, CHART_INK } from "@/lib/chart-colors";
+import { PO_STATUS_COLOR, CHART_INK, CHART_TOOLTIP_STYLE, CHART_TOOLTIP_LABEL_STYLE } from "@/lib/chart-colors";
 import { PageHeader } from "@/components/layout/page-header";
 import { NoStoreSelected } from "@/components/no-store-selected";
 import { StatTile } from "@/components/stat-tile";
@@ -159,7 +159,7 @@ export default function DashboardPage() {
                   />
                   <Tooltip
                     cursor={{ fill: "rgba(0,0,0,0.04)" }}
-                    contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                    contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE}
                   />
                   <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={28}>
                     {poStatusData.map((entry) => (

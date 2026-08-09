@@ -6,6 +6,7 @@ import { CurrentUser, AuthenticatedUser } from "../../common/decorators/current-
 import { InventoryService } from "./inventory.service";
 import { AuditService } from "../../common/audit/audit.service";
 import { CreateAdjustmentDto } from "./dto/create-adjustment.dto";
+import { RevalueStockDto } from "./dto/revalue-stock.dto";
 
 @Controller("inventory")
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -51,6 +52,36 @@ export class InventoryController {
   @Roles("owner", "manager", "inventory_clerk", "accountant")
   getReorderAlerts(@Param("storeId") storeId: string) {
     return this.inventoryService.getReorderAlerts(storeId);
+  }
+
+  /**
+   * Corrects the cost of stock already on hand (see InventoryService.revalueStock).
+   * Owner/manager only — it moves reported inventory value and therefore COGS.
+   */
+  @Post("revalue")
+  @Roles("owner", "manager")
+  async revalue(
+    @Body() dto: RevalueStockDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    const result = await this.inventoryService.revalueStock({
+      storeId: dto.storeId,
+      variantId: dto.variantId,
+      newUnitCost: dto.newUnitCost,
+      performedById: user.userId,
+      reason: dto.reason,
+    });
+
+    await this.audit.record({
+      entityType: "product_variant",
+      entityId: dto.variantId,
+      action: "update",
+      performedById: user.userId,
+      before: { avgUnitCost: result.previousUnitCost },
+      after: { avgUnitCost: result.newUnitCost, quantityOnHand: result.quantityOnHand },
+    });
+
+    return result;
   }
 
   @Post("adjustments")

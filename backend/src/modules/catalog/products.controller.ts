@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import { Roles } from "../../common/decorators/roles.decorator";
@@ -7,6 +7,7 @@ import { ProductsService } from "./products.service";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { CreateVariantDto } from "./dto/create-variant.dto";
 import { QuickAddProductDto } from "./dto/quick-add-product.dto";
+import { UpdateProductDto, UpdateVariantDto } from "./dto/update-product.dto";
 import { UpdatePriceDto } from "./dto/update-price.dto";
 
 @Controller("products")
@@ -53,6 +54,38 @@ export class ProductsController {
   @Roles("owner", "manager", "inventory_clerk", "accountant")
   listVariants(@Param("id") id: string) {
     return this.productsService.listVariants(id);
+  }
+
+  @Patch(":id")
+  @Roles("owner", "manager")
+  updateProduct(@Param("id") id: string, @Body() dto: UpdateProductDto) {
+    return this.productsService.updateProduct(id, dto);
+  }
+
+  @Patch("variants/:variantId")
+  @Roles("owner", "manager", "inventory_clerk")
+  updateVariant(@Param("variantId") variantId: string, @Body() dto: UpdateVariantDto) {
+    return this.productsService.updateVariant(variantId, dto);
+  }
+
+  /** What deleting would actually do — the UI shows this before asking to confirm. */
+  @Get(":id/deletion-impact")
+  @Roles("owner")
+  deletionImpact(@Param("id") id: string) {
+    return this.productsService.getDeletionImpact(id);
+  }
+
+  // Owner only: destroys the record outright when it has no history.
+  @Delete(":id")
+  @Roles("owner")
+  deleteProduct(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.productsService.deleteProduct(id, user.userId);
+  }
+
+  @Delete("variants/:variantId")
+  @Roles("owner")
+  deleteVariant(@Param("variantId") variantId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.productsService.deleteVariant(variantId, user.userId);
   }
 
   @Post(":id/price")

@@ -5,6 +5,7 @@ import { Roles } from "../../common/decorators/roles.decorator";
 import { CurrentUser, AuthenticatedUser } from "../../common/decorators/current-user.decorator";
 import { AuditService } from "../../common/audit/audit.service";
 import { FinanceService } from "./finance.service";
+import { ForecastService } from "./forecast.service";
 import { CreateExpenseDto } from "./dto/create-expense.dto";
 import { UpdateExpenseDto } from "./dto/update-expense.dto";
 
@@ -18,8 +19,18 @@ import { UpdateExpenseDto } from "./dto/update-expense.dto";
 export class FinanceController {
   constructor(
     private readonly finance: FinanceService,
+    private readonly forecast: ForecastService,
     private readonly audit: AuditService,
   ) {}
+
+  /** Forward projection of revenue and net profit — an estimate, see ForecastService. */
+  @Get("forecast")
+  getForecast(
+    @Query("storeId") storeId: string,
+    @Query("horizonMonths") horizonMonths?: string,
+  ) {
+    return this.forecast.getForecast(storeId, Number(horizonMonths) || 6);
+  }
 
   @Get("overview")
   getOverview(@Query("storeId") storeId: string) {

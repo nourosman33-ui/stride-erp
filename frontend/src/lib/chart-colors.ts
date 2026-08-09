@@ -1,3 +1,5 @@
+import type React from "react";
+
 // Validated categorical / status palette (see dataviz skill, references/palette.md).
 // Fixed hue order — assign by position, never cycle or reassign per-filter.
 export const CATEGORICAL = [
@@ -18,12 +20,34 @@ export const STATUS = {
   critical: "#d03b3b",
 } as const;
 
+/**
+ * Chart furniture, resolved from CSS variables so axes and gridlines follow the active
+ * light/dark theme instead of being baked to light-mode ink. Safe as SVG presentation
+ * attributes (`stroke={CHART_INK.muted}`) — SVG accepts var() the same as CSS does.
+ */
 export const CHART_INK = {
-  primary: "#0b0b0b",
-  secondary: "#52514e",
-  muted: "#898781",
-  gridline: "#e1e0d9",
-  baseline: "#c3c2b7",
+  primary: "var(--chart-ink-primary)",
+  secondary: "var(--chart-ink-secondary)",
+  muted: "var(--chart-ink-muted)",
+  gridline: "var(--chart-ink-gridline)",
+  baseline: "var(--chart-ink-baseline)",
+};
+
+/**
+ * Recharts' default tooltip is a hardcoded white box, which reads as a bright card
+ * floating on a dark chart. Pointing it at the popover tokens makes it match every
+ * other surface in whichever theme is active.
+ */
+export const CHART_TOOLTIP_STYLE: React.CSSProperties = {
+  fontSize: 12,
+  borderRadius: 8,
+  background: "var(--color-popover)",
+  border: "1px solid var(--color-border)",
+  color: "var(--color-popover-foreground)",
+};
+
+export const CHART_TOOLTIP_LABEL_STYLE: React.CSSProperties = {
+  color: "var(--color-popover-foreground)",
 };
 
 export const PO_STATUS_COLOR: Record<string, string> = {

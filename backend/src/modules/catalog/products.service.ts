@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../../common/audit/audit.service";
 import { InventoryService } from "../inventory/inventory.service";
@@ -99,6 +100,144 @@ export class ProductsService {
       },
       include: { sizeValue: true, color: true },
     });
+  }
+
+  async updateProduct(id: string, dto: Prisma.ProductUncheckedUpdateInput) {
+    await this.findOne(id);
+    return this.prisma.product.update({
+      where: { id },
+      data: dto,
+      include: { category: true, gender: true, productType: true },
+    });
+  }
+
+  async updateVariant(variantId: string, dto: Prisma.ProductVariantUncheckedUpdateInput) {
+    const variant = await this.prisma.productVariant.findUnique({ where: { id: variantId } });
+    if (!variant) throw new NotFoundException(`Variant ${variantId} not found`);
+
+    if (dto.barcode && dto.barcode !== variant.barcode) {
+      const clash = await this.prisma.productVariant.findUnique({
+        where: { barcode: dto.barcode as string },
+      });
+      if (clash) throw new ConflictException(`Barcode ${dto.barcode} is already in use`);
+    }
+
+    return this.prisma.productVariant.update({
+      where: { id: variantId },
+      data: dto,
+      include: { sizeValue: true, color: true },
+    });
+  }
+
+  /**
+   * How much history a record carries. Anything referenced by a sale, a stock movement or
+   * a purchase order cannot be destroyed without corrupting past reports, so it is
+   * deactivated instead — the row survives, it just stops appearing in pickers.
+   */
+  private async productUsage(productId: string) {
+    const variantIds = (
+      await this.prisma.productVariant.findMany({
+        where: { productId },
+        select: { id: true },
+      })
+    ).map((v) => v.id);
+
+    if (variantIds.length === 0) return { salesLines: 0, ledgerEntries: 0, poLines: 0, variantIds };
+
+    const [salesLines, ledgerEntries, poLines] = await Promise.all([
+      this.prisma.salesOrderLine.count({ where: { variantId: { in: variantIds } } }),
+      this.prisma.stockLedgerEntry.count({ where: { variantId: { in: variantIds } } }),
+      this.prisma.purchaseOrderLine.count({ where: { variantId: { in: variantIds } } }),
+    ]);
+    return { salesLines, ledgerEntries, poLines, variantIds };
+  }
+
+  /** Read-only preview so the UI can warn before the owner commits. */
+  async getDeletionImpact(productId: string) {
+    const product = await this.findOne(productId);
+    const usage = await this.productUsage(productId);
+    const hasHistory = usage.salesLines > 0 || usage.ledgerEntries > 0 || usage.poLines > 0;
+    return {
+      productId,
+      modelName: product.modelName,
+      variantCount: usage.variantIds.length,
+      salesLines: usage.salesLines,
+      stockLedgerEntries: usage.ledgerEntries,
+      purchaseOrderLines: usage.poLines,
+      canHardDelete: !hasHistory,
+      // Spelled out so the UI can say exactly why, rather than "cannot delete".
+      reason: hasHistory
+        ? "This product appears in past sales, stock movements or purchase orders. Deleting it would break those records, so it will be deactivated and hidden from the catalog instead."
+        : "This product has no history, so it will be permanently deleted.",
+    };
+  }
+
+  /**
+   * Destroys the product when nothing references it; otherwise deactivates it (and its
+   * variants) so historical documents keep resolving. Returns which of the two happened.
+   */
+  async deleteProduct(productId: string, performedById: string) {
+    const product = await this.findOne(productId);
+    const usage = await this.productUsage(productId);
+    const hasHistory = usage.salesLines > 0 || usage.ledgerEntries > 0 || usage.poLines > 0;
+
+    if (hasHistory) {
+      await this.prisma.$transaction([
+        this.prisma.productVariant.updateMany({
+          where: { productId },
+          data: { isActive: false },
+        }),
+        this.prisma.product.update({ where: { id: productId }, data: { isActive: false } }),
+      ]);
+    } else {
+      await this.prisma.$transaction([
+        this.prisma.productVariant.deleteMany({ where: { productId } }),
+        this.prisma.product.delete({ where: { id: productId } }),
+      ]);
+    }
+
+    await this.audit.record({
+      entityType: "product",
+      entityId: productId,
+      action: "delete",
+      performedById,
+      before: { modelName: product.modelName, variantCount: usage.variantIds.length },
+      after: { mode: hasHistory ? "deactivated" : "deleted", ...usage, variantIds: undefined },
+    });
+
+    return {
+      productId,
+      mode: hasHistory ? ("deactivated" as const) : ("deleted" as const),
+      modelName: product.modelName,
+    };
+  }
+
+  async deleteVariant(variantId: string, performedById: string) {
+    const variant = await this.prisma.productVariant.findUnique({ where: { id: variantId } });
+    if (!variant) throw new NotFoundException(`Variant ${variantId} not found`);
+
+    const [salesLines, ledgerEntries, poLines] = await Promise.all([
+      this.prisma.salesOrderLine.count({ where: { variantId } }),
+      this.prisma.stockLedgerEntry.count({ where: { variantId } }),
+      this.prisma.purchaseOrderLine.count({ where: { variantId } }),
+    ]);
+    const hasHistory = salesLines > 0 || ledgerEntries > 0 || poLines > 0;
+
+    if (hasHistory) {
+      await this.prisma.productVariant.update({ where: { id: variantId }, data: { isActive: false } });
+    } else {
+      await this.prisma.productVariant.delete({ where: { id: variantId } });
+    }
+
+    await this.audit.record({
+      entityType: "product_variant",
+      entityId: variantId,
+      action: "delete",
+      performedById,
+      after: { mode: hasHistory ? "deactivated" : "deleted", salesLines, ledgerEntries, poLines },
+    });
+
+    return { variantId, mode: hasHistory ? ("deactivated" as const) : ("deleted" as const) };
   }
 
   listVariants(productId: string) {

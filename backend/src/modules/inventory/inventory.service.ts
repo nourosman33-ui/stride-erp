@@ -157,6 +157,118 @@ export class InventoryService {
     return totalQty === 0 ? null : Number((totalCost / totalQty).toFixed(2));
   }
 
+  /**
+   * Corrects the cost basis of stock already on the shelf — the fix for "I added stock
+   * before I set the price, so it is valued at 0".
+   *
+   * The ledger is append-only, so this never edits the original entry. Instead it posts
+   * compensating entries that leave the QUANTITY untouched while moving the weighted
+   * average to `newUnitCost`:
+   *
+   *   - Normal case (the variant has costed receipts totalling R units): reverse them with
+   *     a −R entry at the old average, then re-book +R at the new cost. Net stock change
+   *     zero; the weighted average becomes exactly the new cost.
+   *   - No costed receipts (stock only ever arrived via a manual adjustment, which carries
+   *     no cost): book +Q at the new cost and cancel the quantity with a −Q adjustment.
+   *     Adjustments are excluded from the average, so the average becomes the new cost
+   *     while stock stays where it was.
+   *
+   * Either way the correction is two visible, reason-coded ledger rows — an auditor can
+   * see exactly what was revalued, when, by whom, and from what to what.
+   */
+  async revalueStock(params: {
+    storeId: string;
+    variantId: string;
+    newUnitCost: number;
+    performedById: string;
+    reason?: string;
+  }) {
+    const { storeId, variantId, newUnitCost, performedById } = params;
+    if (newUnitCost < 0) {
+      throw new BadRequestException("Cost cannot be negative");
+    }
+
+    const onHand = await this.getStockOnHand(storeId, variantId);
+    if (onHand <= 0) {
+      throw new BadRequestException(
+        "There is no stock on hand for this item, so there is nothing to revalue",
+      );
+    }
+
+    const receipts = await this.prisma.stockLedgerEntry.findMany({
+      where: { storeId, variantId, entryType: "receipt", unitCost: { not: null } },
+      select: { quantityDelta: true, unitCost: true },
+    });
+    const receiptQty = receipts.reduce((sum, r) => sum + r.quantityDelta, 0);
+    const currentAverage = await this.getWeightedAverageCost(storeId, variantId);
+    const reasonCode = params.reason?.trim() || "cost_revaluation";
+
+    await this.prisma.$transaction(async (tx) => {
+      if (receiptQty > 0) {
+        await this.postStockMovement(
+          {
+            storeId,
+            variantId,
+            entryType: "receipt",
+            quantityDelta: -receiptQty,
+            unitCost: currentAverage ?? 0,
+            referenceType: "revaluation",
+            reasonCode,
+            performedById,
+          },
+          tx,
+        );
+        await this.postStockMovement(
+          {
+            storeId,
+            variantId,
+            entryType: "receipt",
+            quantityDelta: receiptQty,
+            unitCost: newUnitCost,
+            referenceType: "revaluation",
+            reasonCode,
+            performedById,
+          },
+          tx,
+        );
+      } else {
+        await this.postStockMovement(
+          {
+            storeId,
+            variantId,
+            entryType: "receipt",
+            quantityDelta: onHand,
+            unitCost: newUnitCost,
+            referenceType: "revaluation",
+            reasonCode,
+            performedById,
+          },
+          tx,
+        );
+        await this.postStockMovement(
+          {
+            storeId,
+            variantId,
+            entryType: "adjustment",
+            quantityDelta: -onHand,
+            referenceType: "revaluation",
+            reasonCode,
+            performedById,
+          },
+          tx,
+        );
+      }
+    });
+
+    return {
+      variantId,
+      quantityOnHand: onHand,
+      previousUnitCost: currentAverage,
+      newUnitCost,
+      inventoryValue: Number((onHand * newUnitCost).toFixed(2)),
+    };
+  }
+
   /** Fast Moving / Slow Moving / Dead Stock classification (FR-INV-3, business rule #3). */
   async getMovementStatus(storeId: string, variantId: string) {
     const rule = await this.prisma.movementStatusRule.findUnique({ where: { storeId } });

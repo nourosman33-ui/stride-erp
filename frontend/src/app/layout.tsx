@@ -25,13 +25,36 @@ export const metadata: Metadata = {
   description: "STRIDE ERP — catalog, purchasing, inventory, POS and reporting",
 };
 
+/**
+ * Runs before first paint so a dark-mode user never sees a white flash while React
+ * hydrates. It reads the same localStorage keys ThemeProvider writes and applies the
+ * same class/attribute, so the two can never disagree. Kept dependency-free and tiny
+ * because it blocks rendering; any failure falls through to the light default.
+ */
+const NO_FLASH_THEME_SCRIPT = `
+(function(){try{
+  var m=localStorage.getItem("stride_theme_mode")||"system";
+  var a=localStorage.getItem("stride_theme_accent")||"graphite";
+  var d=m==="dark"||(m==="system"&&matchMedia("(prefers-color-scheme: dark)").matches);
+  var r=document.documentElement;
+  r.classList.toggle("dark",d);
+  r.dataset.accent=a;
+  r.style.colorScheme=d?"dark":"light";
+}catch(e){}})();
+`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    // suppressHydrationWarning: the script above intentionally mutates <html> before
+    // React hydrates, so the class/style attributes legitimately differ from the SSR output.
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: NO_FLASH_THEME_SCRIPT }} />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${notoKufiArabic.variable} antialiased`}
       >
