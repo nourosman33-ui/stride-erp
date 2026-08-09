@@ -418,6 +418,18 @@ export interface SalesOrder {
   // Only present on the immediate checkout response — the customer's post-sale points
   // balance and tier, for the receipt. Not persisted on the order itself.
   loyaltySnapshot?: { pointsBalance: number; tier: LoyaltyTier } | null;
+  // Any refunds/exchanges filed against this sale — each links to its own full receipt
+  // at GET /returns/:id rather than duplicating that detail here.
+  returns?: {
+    id: string;
+    returnNumber: string;
+    returnDate: string;
+    type: "refund" | "exchange";
+    refundTotal: string;
+    exchangeTotal: string;
+    balanceDue: string;
+    exchangeOrderId: string | null;
+  }[];
 }
 
 export type AiMessageRole = "user" | "assistant" | "system";

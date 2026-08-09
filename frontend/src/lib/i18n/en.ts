@@ -707,6 +707,8 @@ const en = {
     receiptRefunded: "Refunded",
     receiptExchanged: "Exchanged for",
     receiptBalance: "Balance",
+    receiptReturnedItems: "Items returned",
+    receiptExchangedItems: "New items",
     newInvoice: "New invoice {invoice}",
     done: "Done",
     // history
@@ -723,6 +725,11 @@ const en = {
     noReturns: "No returns yet.",
     typeRefund: "Refund",
     typeExchange: "Exchange",
+    viewReceipt: "View receipt",
+    backToHistory: "Back to Returns",
+    onOrder: "On order {invoice}",
+    ordersWithReturns: "Returns & Exchanges",
+    ordersWithReturnsHint: "This sale has been partly or fully returned or exchanged.",
   },
   manage: {
     fixCost: "Fix cost",

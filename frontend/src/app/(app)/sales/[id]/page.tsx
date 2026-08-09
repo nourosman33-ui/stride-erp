@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Printer } from "lucide-react";
 
 import { getSale } from "@/lib/api/sales";
 import { useLocale } from "@/lib/i18n/locale-context";
@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { ReceiptView } from "@/components/receipt-view";
 import { SalesOrderStatusBadge } from "@/components/status-badge";
 import { PAYMENT_METHOD_KEY } from "@/lib/payment-methods";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -107,14 +108,45 @@ export default function SaleDetailPage() {
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="flex-row items-center justify-between space-y-0">
             <CardTitle className="text-base">{t("salesHistory.receiptPreview")}</CardTitle>
+            <Button variant="outline" size="sm" onClick={() => window.print()}>
+              <Printer className="size-4" />
+              {t("common.print")}
+            </Button>
           </CardHeader>
           <CardContent>
             <ReceiptView order={order} />
           </CardContent>
         </Card>
       </div>
+
+      {order.returns && order.returns.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">{t("returns.ordersWithReturns")}</CardTitle>
+            <p className="text-sm text-muted-foreground">{t("returns.ordersWithReturnsHint")}</p>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {order.returns.map((r) => (
+              <Link
+                key={r.id}
+                href={`/sales/returns/${r.id}`}
+                className="flex items-center justify-between rounded-md border p-3 text-sm hover:bg-accent"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs">{r.returnNumber}</span>
+                  <Badge variant={r.type === "exchange" ? "secondary" : "outline"}>
+                    {t(r.type === "exchange" ? "returns.typeExchange" : "returns.typeRefund")}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">{formatDateTime(r.returnDate)}</span>
+                </div>
+                <span className="font-medium">{formatMoney(r.refundTotal, order.store?.currency)}</span>
+              </Link>
+            ))}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

@@ -28,7 +28,32 @@ const RETURN_INCLUDE = {
     },
   },
   originalOrder: { select: { id: true, invoiceNumber: true, orderDate: true, status: true } },
-  exchangeOrder: { select: { id: true, invoiceNumber: true, grandTotal: true } },
+  // Full line detail (not just totals) so the return receipt can show exactly what the
+  // customer walked out with on an exchange, the same way a normal sale receipt does.
+  exchangeOrder: {
+    select: {
+      id: true,
+      invoiceNumber: true,
+      orderDate: true,
+      grandTotal: true,
+      amountTendered: true,
+      changeDue: true,
+      payments: true,
+      lines: {
+        include: {
+          variant: {
+            select: {
+              id: true,
+              barcode: true,
+              product: { select: { id: true, modelName: true, brand: true, imageUrl: true } },
+              sizeValue: true,
+              color: true,
+            },
+          },
+        },
+      },
+    },
+  },
   customer: true,
   processedBy: { select: { id: true, fullName: true } },
   store: true,

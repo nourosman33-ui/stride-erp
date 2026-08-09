@@ -22,6 +22,7 @@ import {
   type ReturnEligibilityLine,
   type SalesReturn,
 } from "@/lib/api/returns";
+import { ReturnReceiptView } from "@/components/return-receipt-view";
 import { getPosCatalog, listSales, type PosCatalogItem } from "@/lib/api/sales";
 import type { PaymentMethodType } from "@/lib/api/types";
 import { useAuth } from "@/lib/auth-context";
@@ -638,58 +639,7 @@ export default function ReturnsPage() {
                 })}
             </DialogDescription>
           </DialogHeader>
-          {completed && (
-            <div className="space-y-2 text-sm">
-              {completed.lines?.map((l) => (
-                <div key={l.id} className="flex justify-between">
-                  <span>
-                    {l.variant?.product.modelName} × {l.quantity}
-                    {!l.restock && (
-                      <Badge variant="destructive" className="ms-2 text-[10px]">
-                        {t("returns.restockNo")}
-                      </Badge>
-                    )}
-                  </span>
-                  <span className="tabular-nums">{formatMoney(l.refundAmount, cur)}</span>
-                </div>
-              ))}
-              <Separator />
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">{t("returns.receiptRefunded")}</span>
-                <span className="tabular-nums">{formatMoney(completed.refundTotal, cur)}</span>
-              </div>
-              {toNumber(completed.exchangeTotal) > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">{t("returns.receiptExchanged")}</span>
-                  <span className="tabular-nums">{formatMoney(completed.exchangeTotal, cur)}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-base font-semibold">
-                <span>
-                  {toNumber(completed.balanceDue) > 0
-                    ? t("returns.balanceDue")
-                    : t("returns.balanceRefund")}
-                </span>
-                <span className="tabular-nums">
-                  {formatMoney(Math.abs(toNumber(completed.balanceDue)), cur)}
-                </span>
-              </div>
-              {completed.exchangeOrder && (
-                <p className="text-xs text-muted-foreground">
-                  {t("returns.newInvoice", { invoice: completed.exchangeOrder.invoiceNumber })}
-                </p>
-              )}
-              {completed.pointsAdjusted !== 0 && (
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>{t("returns.pointsAdjust")}</span>
-                  <span>
-                    {completed.pointsAdjusted > 0 ? "+" : ""}
-                    {completed.pointsAdjusted}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
+          {completed && <ReturnReceiptView salesReturn={completed} />}
           <DialogFooter>
             <Button variant="outline" onClick={() => window.print()}>
               <Printer className="size-4" />

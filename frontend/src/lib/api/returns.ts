@@ -56,6 +56,35 @@ export interface SalesReturnLine {
   };
 }
 
+/** Line actually purchased on the replacement sale — same shape a receipt needs. */
+export interface ExchangeOrderLine {
+  id: string;
+  variantId: string;
+  quantity: number;
+  unitPrice: string;
+  discountAmount: string;
+  netPrice: string;
+  taxAmount: string;
+  variant?: {
+    id: string;
+    barcode: string;
+    product: { id: string; modelName: string; brand: string | null; imageUrl: string | null };
+    sizeValue: { value: string; standard: string };
+    color: { name: string };
+  };
+}
+
+export interface ExchangeOrder {
+  id: string;
+  invoiceNumber: string;
+  orderDate: string;
+  grandTotal: string;
+  amountTendered: string | null;
+  changeDue: string;
+  payments?: { id: string; method: PaymentMethodType; amount: string }[];
+  lines?: ExchangeOrderLine[];
+}
+
 export interface SalesReturn {
   id: string;
   storeId: string;
@@ -75,10 +104,19 @@ export interface SalesReturn {
   exchangeOrderId: string | null;
   lines?: SalesReturnLine[];
   originalOrder?: { id: string; invoiceNumber: string; orderDate: string; status: SalesOrderStatus };
-  exchangeOrder?: { id: string; invoiceNumber: string; grandTotal: string } | null;
+  exchangeOrder?: ExchangeOrder | null;
   customer?: Customer | null;
   processedBy?: { id: string; fullName: string };
-  store?: { name: string; currency: string; address: string | null; phone: string | null };
+  store?: {
+    name: string;
+    currency: string;
+    address: string | null;
+    phone: string | null;
+    logoUrl?: string | null;
+    taxNumber?: string | null;
+    receiptFooterLine1?: string | null;
+    receiptFooterLine2?: string | null;
+  };
   loyaltySnapshot?: { pointsBalance: number; tier: LoyaltyTier } | null;
 }
 

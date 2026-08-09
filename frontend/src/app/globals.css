@@ -243,3 +243,24 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Printing a receipt (ReceiptView / ReturnReceiptView, marked `.receipt-print-area`)
+   should print just the receipt, not the surrounding sidebar/dialog chrome — works
+   whether the receipt is in a page card or a Radix dialog portal, since it hides by
+   visibility rather than relying on DOM position. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .receipt-print-area,
+  .receipt-print-area * {
+    visibility: visible;
+  }
+  .receipt-print-area {
+    position: absolute;
+    inset: 0;
+    max-width: none;
+    margin: 0;
+    padding: 1rem;
+  }
+}

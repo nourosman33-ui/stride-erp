@@ -8,6 +8,7 @@ import {
   Truck,
   ShoppingCart,
   Undo2,
+  RotateCcw,
   ScanBarcode,
   BarChart3,
   Store,
@@ -70,6 +71,7 @@ export const NAV_GROUPS: NavGroup[] = [
       // Lives under /pos so the cashier route guard in access-control.ts already allows it.
       { labelKey: "returns.navLabel", href: "/pos/returns", icon: Undo2 },
       { labelKey: "nav.salesHistory", href: "/sales", icon: Receipt, roles: BACK_OFFICE_ROLES },
+      { labelKey: "returns.historyTitle", href: "/sales/returns", icon: RotateCcw, roles: BACK_OFFICE_ROLES },
     ],
   },
   {

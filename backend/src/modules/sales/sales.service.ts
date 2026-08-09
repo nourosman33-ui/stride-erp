@@ -55,6 +55,21 @@ const ORDER_INCLUDE = {
   customer: true,
   cashier: { select: { id: true, fullName: true } },
   store: true,
+  // Light — just enough for the sale detail page to list and link to each return's own
+  // full receipt (GET /returns/:id), rather than duplicating that detail here.
+  returns: {
+    select: {
+      id: true,
+      returnNumber: true,
+      returnDate: true,
+      type: true,
+      refundTotal: true,
+      exchangeTotal: true,
+      balanceDue: true,
+      exchangeOrderId: true,
+    },
+    orderBy: { returnDate: "desc" },
+  },
 } as const;
 
 @Injectable()
