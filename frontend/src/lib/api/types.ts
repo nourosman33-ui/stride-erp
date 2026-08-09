@@ -259,6 +259,9 @@ export interface PurchaseReturn {
   reason: string;
   createdById: string;
   createdAt: string;
+  variant?: ProductVariant;
+  createdBy?: { id: string; fullName: string };
+  purchaseOrder?: { id: string; supplier?: { name: string } } | null;
 }
 
 export type StockEntryType =

@@ -194,3 +194,29 @@ export function deleteVariant(variantId: string) {
     { method: "DELETE" },
   );
 }
+
+export type LookupKind = "category" | "gender" | "productType" | "color" | "size";
+
+export interface LookupUsage {
+  id: string;
+  kind: LookupKind;
+  /** Number of products/variants still pointing at this value. */
+  inUseBy: number;
+  canDelete: boolean;
+}
+
+export function getLookupUsage(kind: LookupKind, id: string) {
+  return apiFetch<LookupUsage>(`/catalog/${kind}/${id}/usage`);
+}
+
+export function updateLookup(
+  kind: LookupKind,
+  id: string,
+  body: { name?: string; hexCode?: string; standard?: string; value?: string; sortOrder?: number },
+) {
+  return apiFetch<{ id: string }>(`/catalog/${kind}/${id}`, { method: "PATCH", body });
+}
+
+export function deleteLookup(kind: LookupKind, id: string) {
+  return apiFetch<{ id: string; deleted: boolean }>(`/catalog/${kind}/${id}`, { method: "DELETE" });
+}

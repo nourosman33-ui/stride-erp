@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { ConflictException, Injectable } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 
 export type NamedLookupEntity = "category" | "gender" | "productType";
@@ -42,5 +42,68 @@ export class LookupsService {
 
   createSize(standard: string, value: string, sortOrder = 0) {
     return this.prisma.sizeValue.create({ data: { standard, value, sortOrder } });
+  }
+
+  // ------------------------------------------------------------ edit / delete
+
+  rename(entity: NamedLookupEntity, id: string, name: string) {
+    return this.delegate(entity).update({ where: { id }, data: { name } });
+  }
+
+  updateColor(id: string, data: { name?: string; hexCode?: string }) {
+    return this.prisma.color.update({ where: { id }, data });
+  }
+
+  updateSize(id: string, data: { standard?: string; value?: string; sortOrder?: number }) {
+    return this.prisma.sizeValue.update({ where: { id }, data });
+  }
+
+  /**
+   * How many products/variants point at a lookup value. Unlike products, these tables have
+   * no `isActive` flag to fall back on, so an in-use value simply cannot be removed —
+   * deleting it would leave products pointing at nothing. The count is returned so the
+   * caller can say how many records are in the way rather than just refusing.
+   */
+  private async usageCount(kind: string, id: string): Promise<number> {
+    switch (kind) {
+      case "category":
+        return this.prisma.product.count({ where: { categoryId: id } });
+      case "gender":
+        return this.prisma.product.count({ where: { genderId: id } });
+      case "productType":
+        return this.prisma.product.count({ where: { productTypeId: id } });
+      case "color":
+        return this.prisma.productVariant.count({ where: { colorId: id } });
+      case "size":
+        return this.prisma.productVariant.count({ where: { sizeValueId: id } });
+      default:
+        return 0;
+    }
+  }
+
+  async getUsage(kind: string, id: string) {
+    const inUseBy = await this.usageCount(kind, id);
+    return { id, kind, inUseBy, canDelete: inUseBy === 0 };
+  }
+
+  async remove(kind: string, id: string) {
+    const inUseBy = await this.usageCount(kind, id);
+    if (inUseBy > 0) {
+      throw new ConflictException(
+        `This value is used by ${inUseBy} product(s) and cannot be deleted. Reassign them first, or rename this value instead.`,
+      );
+    }
+
+    switch (kind) {
+      case "color":
+        await this.prisma.color.delete({ where: { id } });
+        break;
+      case "size":
+        await this.prisma.sizeValue.delete({ where: { id } });
+        break;
+      default:
+        await this.delegate(kind as NamedLookupEntity).delete({ where: { id } });
+    }
+    return { id, kind, deleted: true };
   }
 }

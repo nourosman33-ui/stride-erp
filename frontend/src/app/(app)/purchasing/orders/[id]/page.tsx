@@ -1,13 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
-import { CheckCircle2, Loader2, PackageCheck } from "lucide-react";
+import { CheckCircle2, Loader2, PackageCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { approvePurchaseOrder, getPurchaseOrder, receiveGoods } from "@/lib/api/purchasing";
+import { approvePurchaseOrder, deletePurchaseOrder, getPurchaseOrder, receiveGoods } from "@/lib/api/purchasing";
 import { useAuth } from "@/lib/auth-context";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
@@ -119,6 +119,8 @@ export default function PurchaseOrderDetailPage() {
   const poId = params.id;
   const { hasRole } = useAuth();
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const [deleteOpen, setDeleteOpen] = React.useState(false);
 
   const { data: po, isLoading } = useQuery({
     queryKey: ["purchase-order", poId],
@@ -133,6 +135,16 @@ export default function PurchaseOrderDetailPage() {
       toast.success(t("purchaseOrderDetail.approved"));
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : t("purchaseOrderDetail.approveFailed")),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deletePurchaseOrder(poId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["purchase-orders"] });
+      toast.success(t("purchaseOrderDetail.deleted"));
+      router.push("/purchasing/orders");
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : t("purchaseOrderDetail.deleteFailed")),
   });
 
   if (isLoading || !po) {
@@ -162,6 +174,11 @@ export default function PurchaseOrderDetailPage() {
   const total = (po.lines ?? []).reduce((sum, l) => sum + Number(l.lineTotal), 0);
   const canApprove = po.status === "pending_approval" && hasRole("owner", "manager");
   const canReceive = ["approved", "partially_received"].includes(po.status);
+  // Mirrors the backend guard: refused once anything has been received.
+  const canDelete =
+    hasRole("owner") &&
+    (po.goodsReceipts ?? []).length === 0 &&
+    !["partially_received", "received"].includes(po.status);
 
   return (
     <div className="space-y-4">
@@ -181,6 +198,37 @@ export default function PurchaseOrderDetailPage() {
               </Button>
             )}
             {canReceive && <ReceiveGoodsDialog poId={poId} lines={linesWithRemaining} />}
+            {canDelete && (
+              <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="text-destructive hover:bg-destructive/10">
+                    <Trash2 className="size-4" />
+                    {t("purchaseOrderDetail.deleteOrder")}
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-sm">
+                  <DialogHeader>
+                    <DialogTitle>{t("purchaseOrderDetail.deleteConfirmTitle")}</DialogTitle>
+                  </DialogHeader>
+                  <p className="text-sm text-muted-foreground">
+                    {t("purchaseOrderDetail.deleteConfirmBody")}
+                  </p>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setDeleteOpen(false)}>
+                      {t("common.cancel")}
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      disabled={deleteMutation.isPending}
+                      onClick={() => deleteMutation.mutate()}
+                    >
+                      {deleteMutation.isPending && <Loader2 className="size-4 animate-spin" />}
+                      {t("common.delete")}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            )}
           </div>
         }
       />

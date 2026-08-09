@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../../common/audit/audit.service";
 import { InventoryService } from "../inventory/inventory.service";
@@ -215,6 +215,93 @@ export class PurchasingService {
     return receipt;
   }
 
+  /**
+   * Deletes a purchase order outright — only legal while nothing has been received
+   * against it. Once goods arrive, the receipt has moved stock and the PO is the
+   * document explaining that movement, so removing it would orphan the ledger. Those
+   * are cancelled (status = cancelled) instead, which the approve/receive flow already
+   * understands.
+   */
+  async deletePurchaseOrder(id: string, performedById: string) {
+    const po = await this.prisma.purchaseOrder.findUnique({
+      where: { id },
+      include: { goodsReceipts: { select: { id: true } }, lines: { select: { id: true } } },
+    });
+    if (!po) throw new NotFoundException(`Purchase order ${id} not found`);
+
+    if (po.goodsReceipts.length > 0) {
+      throw new ConflictException(
+        `This order has ${po.goodsReceipts.length} goods receipt(s) against it and has already moved stock. Cancel it instead of deleting it.`,
+      );
+    }
+    if (po.status === "partially_received" || po.status === "received") {
+      throw new ConflictException(
+        `A ${po.status.replace("_", " ")} order cannot be deleted. Cancel it instead.`,
+      );
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.purchaseOrderLine.deleteMany({ where: { purchaseOrderId: id } }),
+      this.prisma.purchaseOrder.delete({ where: { id } }),
+    ]);
+
+    await this.audit.record({
+      entityType: "purchase_order",
+      entityId: id,
+      action: "delete",
+      performedById,
+      before: { status: po.status, lineCount: po.lines.length },
+    });
+
+    return { id, deleted: true };
+  }
+
+  /**
+   * Undoes a purchase return by posting a compensating `receipt` that brings the stock
+   * back, then removing the return document. The original outbound entry is deleted
+   * alongside it so the two do not both linger as unexplained movements — this is the one
+   * place the ledger is pruned, and only ever as a matched pair inside one transaction,
+   * with the net effect recorded in the audit log.
+   */
+  async reversePurchaseReturn(id: string, storeId: string, performedById: string) {
+    const ret = await this.prisma.purchaseReturn.findUnique({
+      where: { id },
+      include: { stockLedgerEntries: { select: { id: true, storeId: true } } },
+    });
+    if (!ret) throw new NotFoundException(`Purchase return ${id} not found`);
+
+    // Fall back to the store the original movement was posted against.
+    const targetStore = ret.stockLedgerEntries[0]?.storeId ?? storeId;
+
+    await this.prisma.$transaction(async (tx) => {
+      await this.inventory.postStockMovement(
+        {
+          storeId: targetStore,
+          variantId: ret.variantId,
+          entryType: "receipt",
+          quantityDelta: ret.quantity,
+          referenceType: "purchase_return_reversal",
+          reasonCode: "return_reversed",
+          performedById,
+        },
+        tx,
+      );
+      await tx.stockLedgerEntry.deleteMany({ where: { purchaseReturnId: id } });
+      await tx.purchaseReturn.delete({ where: { id } });
+    });
+
+    await this.audit.record({
+      entityType: "purchase_return",
+      entityId: id,
+      action: "delete",
+      performedById,
+      before: { variantId: ret.variantId, quantity: ret.quantity, reason: ret.reason },
+      after: { reversed: true, stockReturnedToShelf: ret.quantity },
+    });
+
+    return { id, reversed: true, quantityRestored: ret.quantity };
+  }
+
   /** FR-PUR-5: return stock to a supplier (defective / wrong item shipped). */
   async createPurchaseReturn(dto: CreatePurchaseReturnDto, performedById: string) {
     const purchaseReturn = await this.prisma.$transaction(async (tx) => {
@@ -254,5 +341,22 @@ export class PurchasingService {
     });
 
     return purchaseReturn;
+  }
+
+  /**
+   * Scoped by store via the stock ledger entry the return posted, since PurchaseReturn
+   * itself has no storeId column (a return can exist against a purchase order that spans
+   * stores in principle, though in practice each order belongs to one store).
+   */
+  findAllReturns(storeId?: string) {
+    return this.prisma.purchaseReturn.findMany({
+      where: storeId ? { stockLedgerEntries: { some: { storeId } } } : undefined,
+      include: {
+        variant: { include: { product: true, sizeValue: true, color: true } },
+        createdBy: { select: { id: true, fullName: true } },
+        purchaseOrder: { select: { id: true, supplier: { select: { name: true } } } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
   }
 }

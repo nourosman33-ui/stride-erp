@@ -16,8 +16,10 @@ import {
   listGenders,
   listProductTypes,
   listSizes,
+  type LookupKind,
 } from "@/lib/api/catalog";
 import { useLocale } from "@/lib/i18n/locale-context";
+import { LookupRowActions } from "@/components/lookup-row-actions";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,11 +29,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 function NamedLookupTab({
+  kind,
   queryKey,
   fetcher,
   creator,
   label,
 }: {
+  kind: LookupKind;
   queryKey: string;
   fetcher: () => Promise<{ id: string; name: string }[]>;
   creator: (name: string) => Promise<unknown>;
@@ -90,7 +94,23 @@ function NamedLookupTab({
               ) : (
                 data.map((item) => (
                   <TableRow key={item.id}>
-                    <TableCell>{item.name}</TableCell>
+                    <TableCell className="w-full">{item.name}</TableCell>
+                    <TableCell className="text-end">
+                      <LookupRowActions
+                        kind={kind}
+                        id={item.id}
+                        queryKey={queryKey}
+                        saveInput={{ name: item.name }}
+                        renderEdit={(value, set) => (
+                          <Input
+                            autoFocus
+                            value={value.name}
+                            onChange={(e) => set("name", e.target.value)}
+                            className="h-8 w-40"
+                          />
+                        )}
+                      />
+                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -157,12 +177,36 @@ function ColorsTab() {
               ) : (
                 data.map((c) => (
                   <TableRow key={c.id}>
-                    <TableCell className="flex items-center gap-2">
+                    <TableCell className="flex w-full items-center gap-2">
                       <span
                         className="size-4 rounded-full border"
                         style={{ backgroundColor: c.hexCode ?? undefined }}
                       />
                       {c.name}
+                    </TableCell>
+                    <TableCell className="text-end">
+                      <LookupRowActions
+                        kind="color"
+                        id={c.id}
+                        queryKey="colors"
+                        saveInput={{ name: c.name, hexCode: c.hexCode ?? "#000000" }}
+                        renderEdit={(value, set) => (
+                          <>
+                            <Input
+                              autoFocus
+                              value={value.name}
+                              onChange={(e) => set("name", e.target.value)}
+                              className="h-8 w-32"
+                            />
+                            <input
+                              type="color"
+                              value={value.hexCode}
+                              onChange={(e) => set("hexCode", e.target.value)}
+                              className="h-8 w-9 rounded-md border"
+                            />
+                          </>
+                        )}
+                      />
                     </TableCell>
                   </TableRow>
                 ))
@@ -222,18 +266,19 @@ function SizesTab() {
               <TableRow>
                 <TableHead>{t("catalog.colStandard")}</TableHead>
                 <TableHead>{t("catalog.colValue")}</TableHead>
+                <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={2}>
+                  <TableCell colSpan={3}>
                     <Skeleton className="h-6 w-full" />
                   </TableCell>
                 </TableRow>
               ) : sorted.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={2} className="py-6 text-center text-muted-foreground">
+                  <TableCell colSpan={3} className="py-6 text-center text-muted-foreground">
                     {t("catalog.noSizesYet")}
                   </TableCell>
                 </TableRow>
@@ -242,6 +287,29 @@ function SizesTab() {
                   <TableRow key={s.id}>
                     <TableCell>{s.standard}</TableCell>
                     <TableCell>{s.value}</TableCell>
+                    <TableCell className="text-end">
+                      <LookupRowActions
+                        kind="size"
+                        id={s.id}
+                        queryKey="sizes"
+                        saveInput={{ standard: s.standard, value: s.value }}
+                        renderEdit={(value, set) => (
+                          <>
+                            <Input
+                              autoFocus
+                              value={value.standard}
+                              onChange={(e) => set("standard", e.target.value)}
+                              className="h-8 w-20"
+                            />
+                            <Input
+                              value={value.value}
+                              onChange={(e) => set("value", e.target.value)}
+                              className="h-8 w-16"
+                            />
+                          </>
+                        )}
+                      />
+                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -269,6 +337,7 @@ export default function CatalogPage() {
         </TabsList>
         <TabsContent value="categories">
           <NamedLookupTab
+            kind="category"
             queryKey="categories"
             fetcher={listCategories}
             creator={createCategory}
@@ -276,10 +345,17 @@ export default function CatalogPage() {
           />
         </TabsContent>
         <TabsContent value="genders">
-          <NamedLookupTab queryKey="genders" fetcher={listGenders} creator={createGender} label={t("catalog.gender")} />
+          <NamedLookupTab
+            kind="gender"
+            queryKey="genders"
+            fetcher={listGenders}
+            creator={createGender}
+            label={t("catalog.gender")}
+          />
         </TabsContent>
         <TabsContent value="types">
           <NamedLookupTab
+            kind="productType"
             queryKey="product-types"
             fetcher={listProductTypes}
             creator={createProductType}

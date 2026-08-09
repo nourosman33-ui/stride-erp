@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import { Roles } from "../../common/decorators/roles.decorator";
@@ -47,6 +47,13 @@ export class PurchasingController {
   ) {
     return this.purchasingService.receiveGoods(id, dto, user.userId);
   }
+
+  /** Owner only. Refused once anything has been received — cancel those instead. */
+  @Delete(":id")
+  @Roles("owner")
+  deleteOrder(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.purchasingService.deletePurchaseOrder(id, user.userId);
+  }
 }
 
 @Controller("purchase-returns")
@@ -58,5 +65,25 @@ export class PurchaseReturnsController {
   @Roles("owner", "manager", "inventory_clerk")
   create(@Body() dto: CreatePurchaseReturnDto, @CurrentUser() user: AuthenticatedUser) {
     return this.purchasingService.createPurchaseReturn(dto, user.userId);
+  }
+
+  @Get()
+  @Roles("owner", "manager", "inventory_clerk", "accountant")
+  findAll(@Query("storeId") storeId?: string) {
+    return this.purchasingService.findAllReturns(storeId);
+  }
+
+  /**
+   * Undoes a return: posts a compensating receipt so the stock comes back, then removes
+   * the return document. Owner only — it moves stock.
+   */
+  @Delete(":id")
+  @Roles("owner")
+  reverse(
+    @Param("id") id: string,
+    @Query("storeId") storeId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.purchasingService.reversePurchaseReturn(id, storeId, user.userId);
   }
 }

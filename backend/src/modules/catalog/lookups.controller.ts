@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import { Roles } from "../../common/decorators/roles.decorator";
@@ -65,5 +65,55 @@ export class LookupsController {
   @Roles("owner", "manager")
   createSize(@Body() dto: CreateSizeDto) {
     return this.lookups.createSize(dto.standard, dto.value, dto.sortOrder);
+  }
+
+  // ---------------------------------------------------------- edit / delete
+  //
+  // One generic pair rather than ten near-identical routes. `kind` is validated
+  // against a fixed allow-list so it can never be used to reach another table.
+
+  private static readonly KINDS = ["category", "gender", "productType", "color", "size"] as const;
+
+  private assertKind(kind: string) {
+    if (!(LookupsController.KINDS as readonly string[]).includes(kind)) {
+      throw new BadRequestException(`Unknown catalog type "${kind}"`);
+    }
+    return kind;
+  }
+
+  /** Whether this value can be removed, and how many products block it if not. */
+  @Get(":kind/:id/usage")
+  @Roles("owner", "manager")
+  usage(@Param("kind") kind: string, @Param("id") id: string) {
+    return this.lookups.getUsage(this.assertKind(kind), id);
+  }
+
+  @Patch(":kind/:id")
+  @Roles("owner", "manager")
+  update(
+    @Param("kind") kind: string,
+    @Param("id") id: string,
+    @Body() body: { name?: string; hexCode?: string; standard?: string; value?: string; sortOrder?: number },
+  ) {
+    switch (this.assertKind(kind)) {
+      case "color":
+        return this.lookups.updateColor(id, { name: body.name, hexCode: body.hexCode });
+      case "size":
+        return this.lookups.updateSize(id, {
+          standard: body.standard,
+          value: body.value,
+          sortOrder: body.sortOrder,
+        });
+      default:
+        if (!body.name?.trim()) throw new BadRequestException("A name is required");
+        return this.lookups.rename(kind as never, id, body.name.trim());
+    }
+  }
+
+  // Owner only: refused outright when any product still points at the value.
+  @Delete(":kind/:id")
+  @Roles("owner")
+  remove(@Param("kind") kind: string, @Param("id") id: string) {
+    return this.lookups.remove(this.assertKind(kind), id);
   }
 }

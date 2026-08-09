@@ -58,3 +58,20 @@ export interface CreatePurchaseReturnInput {
 export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
   return apiFetch<PurchaseReturn>("/purchase-returns", { method: "POST", body: input });
 }
+
+export function listPurchaseReturns(storeId?: string) {
+  return apiFetch<PurchaseReturn[]>("/purchase-returns", { params: { storeId } });
+}
+
+/** Refused once goods have been received — cancel the order instead. */
+export function deletePurchaseOrder(id: string) {
+  return apiFetch<{ id: string; deleted: boolean }>(`/purchase-orders/${id}`, { method: "DELETE" });
+}
+
+/** Posts a compensating receipt so the stock comes back, then removes the return. */
+export function reversePurchaseReturn(id: string, storeId: string) {
+  return apiFetch<{ id: string; reversed: boolean; quantityRestored: number }>(
+    `/purchase-returns/${id}`,
+    { method: "DELETE", params: { storeId } },
+  );
+}
