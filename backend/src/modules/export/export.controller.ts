@@ -17,7 +17,9 @@ import { Roles } from "../../common/decorators/roles.decorator";
 import { CurrentUser, AuthenticatedUser } from "../../common/decorators/current-user.decorator";
 import { AuditService } from "../../common/audit/audit.service";
 import { ExportService } from "./export.service";
+import { ExportPdfService } from "./export-pdf.service";
 import { FeedsService } from "./feeds.service";
+import { ListExpensesQueryDto } from "../expenses/dto/list-expenses-query.dto";
 
 export class CreateFeedTokenDto {
   @IsUUID()
@@ -30,6 +32,8 @@ export class CreateFeedTokenDto {
 }
 
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const CSV_MIME = "text/csv; charset=utf-8";
+const PDF_MIME = "application/pdf";
 
 function stamp(): string {
   return new Date().toISOString().slice(0, 10);
@@ -44,14 +48,15 @@ function stamp(): string {
 export class ExportController {
   constructor(
     private readonly exports: ExportService,
+    private readonly exportsPdf: ExportPdfService,
     private readonly feeds: FeedsService,
     private readonly audit: AuditService,
   ) {}
 
-  private send(res: Response, filename: string, buf: Buffer) {
-    res.setHeader("Content-Type", XLSX_MIME);
+  private send(res: Response, filename: string, buf: Buffer | string, mime: string = XLSX_MIME) {
+    res.setHeader("Content-Type", mime);
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-    res.setHeader("Content-Length", buf.length);
+    res.setHeader("Content-Length", Buffer.byteLength(buf));
     res.end(buf);
   }
 
@@ -78,6 +83,46 @@ export class ExportController {
   @Roles("owner", "manager", "inventory_clerk", "accountant")
   async stock(@Query("storeId") storeId: string, @Res() res: Response) {
     this.send(res, `stride-stock-${stamp()}.xlsx`, await this.exports.stockWorkbook(storeId));
+  }
+
+  // ------------------------------------------------------- daily expenses
+
+  @Get("expenses.xlsx")
+  @Roles("owner", "manager")
+  async expensesXlsx(@Query() query: ListExpensesQueryDto, @CurrentUser() user: AuthenticatedUser, @Res() res: Response) {
+    this.send(res, `stride-expenses-${stamp()}.xlsx`, await this.exports.expensesWorkbook(query, user));
+  }
+
+  @Get("expenses.csv")
+  @Roles("owner", "manager")
+  async expensesCsv(@Query() query: ListExpensesQueryDto, @CurrentUser() user: AuthenticatedUser, @Res() res: Response) {
+    this.send(res, `stride-expenses-${stamp()}.csv`, await this.exports.expensesCsv(query, user), CSV_MIME);
+  }
+
+  @Get("expenses.pdf")
+  @Roles("owner", "manager")
+  async expensesPdf(@Query() query: ListExpensesQueryDto, @CurrentUser() user: AuthenticatedUser, @Res() res: Response) {
+    this.send(res, `stride-expenses-${stamp()}.pdf`, await this.exportsPdf.expenseListPdf(query, user), PDF_MIME);
+  }
+
+  @Get("daily-closing.pdf")
+  @Roles("owner", "manager")
+  async dailyClosingPdf(@Query("storeId") storeId: string, @Query("date") date: string, @Res() res: Response) {
+    this.send(res, `stride-daily-closing-${date}.pdf`, await this.exportsPdf.dailyClosingPdf(storeId, date), PDF_MIME);
+  }
+
+  // Monthly/yearly figures roll up the same margin-sensitive numbers as /finance —
+  // owner only, matching that controller's posture.
+  @Get("financial-report.pdf")
+  @Roles("owner")
+  async financialReportPdf(
+    @Query("storeId") storeId: string,
+    @Query("period") period: "monthly" | "yearly",
+    @Query("key") key: string,
+    @Res() res: Response,
+  ) {
+    const buf = await this.exportsPdf.financialReportPdf(storeId, period, key);
+    this.send(res, `stride-financial-report-${key}.pdf`, buf, PDF_MIME);
   }
 
   // ----------------------------------------------------------- feed links

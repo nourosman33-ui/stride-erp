@@ -66,7 +66,7 @@ model Store {
   // Phase 4 — Financial planning. Owner capital put into the business (opening inventory
   // buy-in plus any fit-out). Drives payback-period and ROI in FinanceService; it is
   // capital, never an operating expense, so it never touches the P&L.
-  initialInvestment Decimal  @default(0.00) @map("initial_investment") @db.Decimal(14, 2)
+  initialInvestment  Decimal   @default(0.00) @map("initial_investment") @db.Decimal(14, 2)
   // Business start date for cumulative/inception-to-date reporting. Falls back to
   // openingDate, then createdAt, when unset.
   financialStartDate DateTime? @map("financial_start_date") @db.Date
@@ -81,6 +81,8 @@ model Store {
   operatingExpenses   OperatingExpense[]
   salesReturns        SalesReturn[]
   feedTokens          FeedToken[]
+  dailyExpenses       DailyExpense[]
+  cashCounts          CashCount[]
 
   @@map("store")
 }
@@ -109,6 +111,13 @@ model User {
   operatingExpensesCreated     OperatingExpense[]   @relation("ExpenseCreatedBy")
   salesReturnsProcessed        SalesReturn[]        @relation("ReturnProcessedBy")
   feedTokensCreated            FeedToken[]          @relation("FeedTokenCreatedBy")
+  dailyExpensesCreated         DailyExpense[]       @relation("DailyExpenseCreatedBy")
+  dailyExpensesApproved        DailyExpense[]       @relation("DailyExpenseApprovedBy")
+  dailyExpensesRejected        DailyExpense[]       @relation("DailyExpenseRejectedBy")
+  dailyExpensesLastModified    DailyExpense[]       @relation("DailyExpenseLastModifiedBy")
+  dailyExpensesDeleted         DailyExpense[]       @relation("DailyExpenseDeletedBy")
+  cashCountsCounted            CashCount[]          @relation("CashCountCountedBy")
+  cashCountsCreated            CashCount[]          @relation("CashCountCreatedBy")
 
   @@map("app_user")
 }
@@ -143,6 +152,7 @@ enum AuditAction {
   update
   delete
   approve
+  reject
 }
 
 model AuditLog {
@@ -613,11 +623,11 @@ model SalesOrder {
   customer Customer? @relation(fields: [customerId], references: [id])
   cashier  User      @relation("SalesCashier", fields: [cashierId], references: [id])
 
-  lines    SalesOrderLine[]
-  payments Payment[]
-  returns  SalesReturn[] @relation("ReturnOriginalOrder")
+  lines         SalesOrderLine[]
+  payments      Payment[]
+  returns       SalesReturn[]    @relation("ReturnOriginalOrder")
   // Set when this order *is* the replacement raised by an exchange.
-  exchangedFrom SalesReturn? @relation("ReturnExchangeOrder")
+  exchangedFrom SalesReturn?     @relation("ReturnExchangeOrder")
 
   @@index([storeId, orderDate])
   @@map("sales_order")
@@ -826,10 +836,10 @@ model SalesReturn {
   exchangeTotal Decimal @default(0) @map("exchange_total") @db.Decimal(12, 2)
   balanceDue    Decimal @default(0) @map("balance_due") @db.Decimal(12, 2)
 
-  refundMethod PaymentMethodType? @map("refund_method")
+  refundMethod   PaymentMethodType? @map("refund_method")
   // Signed: negative claws back points earned on the returned value, positive restores
   // points that were redeemed against it.
-  pointsAdjusted Int @default(0) @map("points_adjusted")
+  pointsAdjusted Int                @default(0) @map("points_adjusted")
 
   // The replacement sale raised for an exchange — a normal SalesOrder, so it earns points,
   // deducts stock and appears in reporting like any other sale.
@@ -837,11 +847,11 @@ model SalesReturn {
 
   createdAt DateTime @default(now()) @map("created_at")
 
-  store         Store      @relation(fields: [storeId], references: [id])
-  originalOrder SalesOrder @relation("ReturnOriginalOrder", fields: [originalOrderId], references: [id])
-  exchangeOrder SalesOrder? @relation("ReturnExchangeOrder", fields: [exchangeOrderId], references: [id])
-  customer      Customer?  @relation(fields: [customerId], references: [id])
-  processedBy   User       @relation("ReturnProcessedBy", fields: [processedById], references: [id])
+  store         Store             @relation(fields: [storeId], references: [id])
+  originalOrder SalesOrder        @relation("ReturnOriginalOrder", fields: [originalOrderId], references: [id])
+  exchangeOrder SalesOrder?       @relation("ReturnExchangeOrder", fields: [exchangeOrderId], references: [id])
+  customer      Customer?         @relation(fields: [customerId], references: [id])
+  processedBy   User              @relation("ReturnProcessedBy", fields: [processedById], references: [id])
   lines         SalesReturnLine[]
 
   @@index([storeId, returnDate])
@@ -850,19 +860,19 @@ model SalesReturn {
 }
 
 model SalesReturnLine {
-  id          String @id @default(uuid())
-  returnId    String @map("return_id")
-  orderLineId String @map("order_line_id")
-  variantId   String @map("variant_id")
-  quantity    Int
-  unitPrice   Decimal @map("unit_price") @db.Decimal(12, 2)
+  id           String  @id @default(uuid())
+  returnId     String  @map("return_id")
+  orderLineId  String  @map("order_line_id")
+  variantId    String  @map("variant_id")
+  quantity     Int
+  unitPrice    Decimal @map("unit_price") @db.Decimal(12, 2)
   // Refund for this line at the price actually paid (original discount honoured).
   refundAmount Decimal @map("refund_amount") @db.Decimal(12, 2)
   taxAmount    Decimal @default(0) @map("tax_amount") @db.Decimal(12, 2)
   // False for damaged goods: the customer is refunded but the stock is not put back on
   // the shelf, so its cost stays in COGS as a real loss instead of silently reversing.
-  restock   Boolean @default(true)
-  condition String?
+  restock      Boolean @default(true)
+  condition    String?
 
   salesReturn SalesReturn    @relation(fields: [returnId], references: [id], onDelete: Cascade)
   orderLine   SalesOrderLine @relation(fields: [orderLineId], references: [id])
@@ -881,9 +891,9 @@ model SalesReturnLine {
  * Bearer-in-URL credential for spreadsheet feeds. Excel's Data → From Web cannot send
  * an Authorization header, so the secret travels in the path — the same trade-off
  * calendar (.ics) and "publish to web" links make. Consequences, handled deliberately:
- *   - the token is long and random (not guessable, not derived from the store id)
- *   - it is READ-ONLY and scoped to one store's reporting feeds
- *   - it is revocable, and `lastUsedAt` shows whether a leaked link is being used
+ * - the token is long and random (not guessable, not derived from the store id)
+ * - it is READ-ONLY and scoped to one store's reporting feeds
+ * - it is revocable, and `lastUsedAt` shows whether a leaked link is being used
  * Anyone holding the URL can read that store's figures, so the UI says so plainly.
  */
 model FeedToken {
@@ -901,4 +911,122 @@ model FeedToken {
 
   @@index([storeId])
   @@map("feed_token")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 7 — Daily Expenses, Approvals & Cash Flow
+//
+// Deliberately separate from OperatingExpense (Phase 4): that model is for
+// RECURRING fixed costs (rent, salaries) declared once with a frequency and
+// pro-rated into every reporting window. DailyExpense is for one-off cash-out
+// transactions recorded as they happen (water, cleaning supplies, transport).
+// The two are combined only in the new financial-dashboard module, never
+// inside FinanceService's existing P&L, so neither breaks the other.
+// ---------------------------------------------------------------------------
+
+/// Predefined + user-addable category lookup for DailyExpense — unlike
+/// OperatingExpense.category (a fixed enum), this is a real table so
+/// managers/owners can add categories without a migration.
+model DailyExpenseCategory {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  expenses DailyExpense[]
+
+  @@map("daily_expense_category")
+}
+
+enum DailyExpenseStatus {
+  pending
+  approved
+  rejected
+}
+
+/// Ad-hoc cash-out expense. Cashier-created rows start `pending` and are
+/// excluded from every total/dashboard until a manager/owner approves them;
+/// manager/owner-created rows auto-approve (self-authority). Never hard-deleted
+/// — `deletedAt`/`deletedById`/`deletionReason` preserve the record per the
+/// "must not disappear from the DB" requirement; every read path filters
+/// `deletedAt: null` except the owner-only deleted-history view.
+model DailyExpense {
+  id            String            @id @default(uuid())
+  storeId       String            @map("store_id")
+  categoryId    String            @map("category_id")
+  description   String
+  amount        Decimal           @db.Decimal(12, 2)
+  paymentMethod PaymentMethodType @map("payment_method")
+  // Single date+time field, matching SalesOrder.orderDate / SalesReturn.returnDate
+  // convention elsewhere in this schema rather than splitting date/time columns.
+  occurredAt    DateTime          @map("occurred_at")
+  notes         String?
+
+  status          DailyExpenseStatus @default(pending)
+  approvedById    String?            @map("approved_by")
+  approvedAt      DateTime?          @map("approved_at")
+  rejectedById    String?            @map("rejected_by")
+  rejectedAt      DateTime?          @map("rejected_at")
+  rejectionReason String?            @map("rejection_reason")
+
+  // Receipt attachment — inline columns rather than a generic polymorphic
+  // Attachment model, since only DailyExpense needs this today.
+  receiptOriginalName String? @map("receipt_original_name")
+  // UUID-based; the extension is derived from the validated MIME type at
+  // upload time, never from the client-supplied original filename.
+  receiptStoredName   String? @map("receipt_stored_name")
+  receiptMimeType     String? @map("receipt_mime_type")
+  receiptSizeBytes    Int?    @map("receipt_size_bytes")
+
+  createdById      String    @map("created_by")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  lastModifiedById String?   @map("last_modified_by")
+  lastModifiedAt   DateTime? @map("last_modified_at")
+
+  deletedAt      DateTime? @map("deleted_at")
+  deletedById    String?   @map("deleted_by")
+  deletionReason String?   @map("deletion_reason")
+
+  store          Store                @relation(fields: [storeId], references: [id])
+  category       DailyExpenseCategory @relation(fields: [categoryId], references: [id])
+  createdBy      User                 @relation("DailyExpenseCreatedBy", fields: [createdById], references: [id])
+  approvedBy     User?                @relation("DailyExpenseApprovedBy", fields: [approvedById], references: [id])
+  rejectedBy     User?                @relation("DailyExpenseRejectedBy", fields: [rejectedById], references: [id])
+  lastModifiedBy User?                @relation("DailyExpenseLastModifiedBy", fields: [lastModifiedById], references: [id])
+  deletedBy      User?                @relation("DailyExpenseDeletedBy", fields: [deletedById], references: [id])
+
+  @@index([storeId, occurredAt])
+  @@index([storeId, status])
+  @@index([storeId, deletedAt])
+  @@index([categoryId])
+  @@index([createdById])
+  @@map("daily_expense")
+}
+
+/// Daily till reconciliation. Only the two physical-reality inputs (opening
+/// cash, actual counted cash) are stored — cash sales, cash expenses, expected
+/// closing cash and the variance are always computed live from SalesOrder/
+/// Payment/DailyExpense, never duplicated here.
+model CashCount {
+  id                String    @id @default(uuid())
+  storeId           String    @map("store_id")
+  countDate         DateTime  @map("count_date") @db.Date
+  openingCash       Decimal   @default(0) @map("opening_cash") @db.Decimal(12, 2)
+  actualClosingCash Decimal?  @map("actual_closing_cash") @db.Decimal(12, 2)
+  countedById       String?   @map("counted_by")
+  countedAt         DateTime? @map("counted_at")
+  notes             String?
+
+  createdById String   @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  store     Store @relation(fields: [storeId], references: [id])
+  countedBy User? @relation("CashCountCountedBy", fields: [countedById], references: [id])
+  createdBy User  @relation("CashCountCreatedBy", fields: [createdById], references: [id])
+
+  @@unique([storeId, countDate])
+  @@index([storeId, countDate])
+  @@map("cash_count")
 }

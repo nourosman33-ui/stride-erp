@@ -4,6 +4,10 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { FinanceService } from "../finance/finance.service";
 import { ForecastService } from "../finance/forecast.service";
 import { InventoryService } from "../inventory/inventory.service";
+import { ExpensesService } from "../expenses/expenses.service";
+import { AuthenticatedUser } from "../../common/decorators/current-user.decorator";
+import { ListExpensesQueryDto } from "../expenses/dto/list-expenses-query.dto";
+import { toCsv } from "../../common/csv";
 
 /** Excel number formats. `#,##0.00` keeps thousands separators without forcing a locale symbol. */
 const MONEY = "#,##0.00";
@@ -19,6 +23,7 @@ export class ExportService {
     private readonly finance: FinanceService,
     private readonly forecast: ForecastService,
     private readonly inventory: InventoryService,
+    private readonly expenses: ExpensesService,
   ) {}
 
   private newBook(): ExcelJS.Workbook {
@@ -360,5 +365,61 @@ export class ExportService {
     );
 
     return this.buffer(wb);
+  }
+
+  // ---------------------------------------------------------- daily expenses
+  //
+  // Export is owner/manager-only (see ExportController), so `requester` here is
+  // always elevated — ExpensesService.list() applies no cashier row-scoping.
+
+  private async fetchExpenseRows(query: ListExpensesQueryDto, requester: AuthenticatedUser) {
+    const { items } = await this.expenses.list({ ...query, pageSize: 100000 }, requester);
+    return items;
+  }
+
+  async expensesWorkbook(query: ListExpensesQueryDto, requester: AuthenticatedUser): Promise<Buffer> {
+    const [items, store] = await Promise.all([
+      this.fetchExpenseRows(query, requester),
+      this.prisma.store.findUniqueOrThrow({ where: { id: query.storeId } }),
+    ]);
+    const cur = store.currency;
+    const wb = this.newBook();
+
+    this.addSheet(
+      wb,
+      "Expenses",
+      ["Date", "Category", "Description", `Amount (${cur})`, "Payment method", "Added by", "Status", "Notes"],
+      items.map((e) => [
+        e.occurredAt.toISOString().slice(0, 16).replace("T", " "),
+        e.category.name,
+        e.description,
+        Number(e.amount),
+        e.paymentMethod,
+        e.createdBy.fullName,
+        e.status,
+        e.notes,
+      ]),
+      [null, null, null, MONEY, null, null, null, null],
+      [18, 16, 30, 14, 14, 18, 12, 30],
+    );
+
+    return this.buffer(wb);
+  }
+
+  async expensesCsv(query: ListExpensesQueryDto, requester: AuthenticatedUser): Promise<string> {
+    const items = await this.fetchExpenseRows(query, requester);
+    return toCsv(
+      ["Date", "Category", "Description", "Amount", "Payment method", "Added by", "Status", "Notes"],
+      items.map((e) => [
+        e.occurredAt.toISOString().slice(0, 16).replace("T", " "),
+        e.category.name,
+        e.description,
+        Number(e.amount),
+        e.paymentMethod,
+        e.createdBy.fullName,
+        e.status,
+        e.notes,
+      ]),
+    );
   }
 }

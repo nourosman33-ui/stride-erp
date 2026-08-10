@@ -13,6 +13,7 @@ import { AiModule } from "./modules/ai/ai.module";
 import { FinanceModule } from "./modules/finance/finance.module";
 import { ReturnsModule } from "./modules/returns/returns.module";
 import { ExportModule } from "./modules/export/export.module";
+import { ExpensesModule } from "./modules/expenses/expenses.module";
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { ExportModule } from "./modules/export/export.module";
     FinanceModule,
     ReturnsModule,
     ExportModule,
+    ExpensesModule,
   ],
 })
 export class AppModule {}

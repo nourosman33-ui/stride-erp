@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
-import { ExpenseCategory, OperatingExpense, Prisma } from "@prisma/client";
+import { ExpenseCategory, OperatingExpense, PaymentMethodType, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { InventoryService } from "../inventory/inventory.service";
 import {
@@ -84,8 +84,15 @@ export class FinanceService {
     return Math.max(0, (to.getTime() - from.getTime()) / MS_PER_DAY);
   }
 
+  /** Local calendar date as YYYY-MM-DD — built from local Y/M/D getters rather
+   * than `toISOString().slice(0,10)`, which round-trips through UTC and silently
+   * shifts the label back a day for any positive-offset timezone (e.g. this
+   * store's Africa/Cairo, UTC+3) since `startOfDay` zeroes hours in local time. */
   private isoDate(d: Date): string {
-    return d.toISOString().slice(0, 10);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
   }
 
   /**
@@ -486,5 +493,67 @@ export class FinanceService {
     const found = await this.prisma.operatingExpense.findUnique({ where: { id } });
     if (!found) throw new NotFoundException(`Operating expense ${id} not found`);
     return found;
+  }
+
+  // --------------------------------------------------- daily-expenses module glue
+  //
+  // The only two things the new expenses/financial-dashboard module needs from here.
+  // Everything above is untouched — "Total Expenses" in that module is computed by
+  // adding this to the new module's own DailyExpense totals, never inside getPnl
+  // itself, so this feature can never change the existing P&L/forecast/break-even output.
+
+  /** Recurring OperatingExpense cost, pro-rated over [from, to) — same math as getPnl. */
+  async getOperatingExpensesTotal(storeId: string, from: Date, to: Date): Promise<number> {
+    const expenses = await this.activeExpensesForWindow(storeId, from, to);
+    return money(expenses.reduce((sum, e) => sum + this.expenseChargeForWindow(e, from, to), 0));
+  }
+
+  /** Revenue collected per payment method over [from, to) — used for the Cash Flow card. */
+  async getPaymentMethodBreakdown(
+    storeId: string,
+    from: Date,
+    to: Date,
+  ): Promise<Record<PaymentMethodType, number>> {
+    const rows = await this.prisma.payment.groupBy({
+      by: ["method"],
+      where: { order: { storeId, orderDate: { gte: from, lt: to }, status: REVENUE_STATUS_FILTER } },
+      _sum: { amount: true },
+    });
+    const result: Record<PaymentMethodType, number> = {
+      cash: 0,
+      card: 0,
+      mobile_wallet: 0,
+      bank_transfer: 0,
+    };
+    for (const row of rows) {
+      result[row.method] = money(Number(row._sum.amount ?? 0));
+    }
+    return result;
+  }
+
+  /** Refunds paid out per method over [from, to) — a cash refund removes money from
+   * the till just like a cash expense does, so the Cash Flow card needs this to
+   * reconcile correctly (refundMethod is null for a pure exchange with no cash out). */
+  async getRefundsByMethod(
+    storeId: string,
+    from: Date,
+    to: Date,
+  ): Promise<Record<PaymentMethodType, number>> {
+    const rows = await this.prisma.salesReturn.groupBy({
+      by: ["refundMethod"],
+      where: { storeId, returnDate: { gte: from, lt: to }, refundMethod: { not: null } },
+      _sum: { refundTotal: true },
+    });
+    const result: Record<PaymentMethodType, number> = {
+      cash: 0,
+      card: 0,
+      mobile_wallet: 0,
+      bank_transfer: 0,
+    };
+    for (const row of rows) {
+      if (!row.refundMethod) continue;
+      result[row.refundMethod] = money(Number(row._sum.refundTotal ?? 0));
+    }
+    return result;
   }
 }

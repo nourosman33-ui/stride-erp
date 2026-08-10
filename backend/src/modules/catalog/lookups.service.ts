@@ -1,7 +1,7 @@
 import { ConflictException, Injectable } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 
-export type NamedLookupEntity = "category" | "gender" | "productType";
+export type NamedLookupEntity = "category" | "gender" | "productType" | "dailyExpenseCategory";
 
 /**
  * CRUD over the controlled-vocabulary lookup tables (FR-CAT-3) that replace
@@ -40,14 +40,25 @@ export class LookupsService {
     });
   }
 
+  /** Active-only, for the expense-entry category picker (every role can read this). */
+  findAllExpenseCategories() {
+    return this.prisma.dailyExpenseCategory.findMany({
+      where: { isActive: true },
+      orderBy: { name: "asc" },
+    });
+  }
+
   createSize(standard: string, value: string, sortOrder = 0) {
     return this.prisma.sizeValue.create({ data: { standard, value, sortOrder } });
   }
 
   // ------------------------------------------------------------ edit / delete
 
-  rename(entity: NamedLookupEntity, id: string, name: string) {
-    return this.delegate(entity).update({ where: { id }, data: { name } });
+  rename(entity: NamedLookupEntity, id: string, name?: string, isActive?: boolean) {
+    const data: Record<string, unknown> = {};
+    if (name !== undefined) data.name = name;
+    if (isActive !== undefined) data.isActive = isActive;
+    return this.delegate(entity).update({ where: { id }, data });
   }
 
   updateColor(id: string, data: { name?: string; hexCode?: string }) {
@@ -76,6 +87,8 @@ export class LookupsService {
         return this.prisma.productVariant.count({ where: { colorId: id } });
       case "size":
         return this.prisma.productVariant.count({ where: { sizeValueId: id } });
+      case "dailyExpenseCategory":
+        return this.prisma.dailyExpense.count({ where: { categoryId: id, deletedAt: null } });
       default:
         return 0;
     }
@@ -89,8 +102,9 @@ export class LookupsService {
   async remove(kind: string, id: string) {
     const inUseBy = await this.usageCount(kind, id);
     if (inUseBy > 0) {
+      const noun = kind === "dailyExpenseCategory" ? "expense(s)" : "product(s)";
       throw new ConflictException(
-        `This value is used by ${inUseBy} product(s) and cannot be deleted. Reassign them first, or rename this value instead.`,
+        `This value is used by ${inUseBy} ${noun} and cannot be deleted. Reassign them first, or retire this value instead.`,
       );
     }
 

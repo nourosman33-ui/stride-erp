@@ -13,19 +13,24 @@ export interface FeedToken {
   createdBy?: { fullName: string };
 }
 
-export type ExportKind = "financials" | "sales" | "stock";
+export type ExportKind = "financials" | "sales" | "stock" | "expenses";
+export type ExportFormat = "xlsx" | "csv" | "pdf";
 
 /**
- * Downloads a workbook. apiFetch parses JSON, so this goes direct to fetch to keep the
- * binary intact, then triggers the browser's own save dialog via an object URL.
+ * Downloads any export. apiFetch parses JSON, so this goes direct to fetch to keep
+ * the binary intact, then triggers the browser's own save dialog via an object URL.
+ * `path` overrides the default `/export/{kind}.{format}` shape for the two report
+ * endpoints (daily-closing.pdf, financial-report.pdf) that aren't kind-shaped.
  */
-export async function downloadWorkbook(
+export async function downloadExport(
   kind: ExportKind,
+  format: ExportFormat,
   storeId: string,
   extraParams: Record<string, string> = {},
+  path?: string,
 ): Promise<void> {
-  const url = new URL(`${API_BASE_URL}/export/${kind}.xlsx`);
-  url.searchParams.set("storeId", storeId);
+  const url = new URL(`${API_BASE_URL}${path ?? `/export/${kind}.${format}`}`);
+  if (storeId) url.searchParams.set("storeId", storeId);
   for (const [k, v] of Object.entries(extraParams)) url.searchParams.set(k, v);
 
   const token = getAuthToken();
@@ -44,7 +49,7 @@ export async function downloadWorkbook(
   // Prefer the filename the server chose so the date stamp is consistent.
   const disposition = res.headers.get("Content-Disposition") ?? "";
   const match = /filename="?([^"]+)"?/.exec(disposition);
-  const filename = match?.[1] ?? `stride-${kind}.xlsx`;
+  const filename = match?.[1] ?? `stride-${kind}.${format}`;
 
   const blob = await res.blob();
   const objectUrl = URL.createObjectURL(blob);
@@ -55,6 +60,11 @@ export async function downloadWorkbook(
   a.click();
   a.remove();
   URL.revokeObjectURL(objectUrl);
+}
+
+/** Back-compat wrapper — existing financials/sales/stock call sites are unaffected. */
+export function downloadWorkbook(kind: ExportKind, storeId: string, extraParams: Record<string, string> = {}) {
+  return downloadExport(kind, "xlsx", storeId, extraParams);
 }
 
 /** Base URL a spreadsheet points at. The token is the credential — treat it as a secret. */

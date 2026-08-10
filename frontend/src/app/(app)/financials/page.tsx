@@ -43,6 +43,8 @@ import { CHART_INK, CHART_TOOLTIP_STYLE, CHART_TOOLTIP_LABEL_STYLE } from "@/lib
 import { PageHeader } from "@/components/layout/page-header";
 import { ExportButton } from "@/components/export-button";
 import { ForecastSection } from "@/components/forecast-section";
+import { FinancialDashboardSection } from "@/components/financial-dashboard/dashboard-section";
+import { PeriodReportsSection } from "@/components/financial-dashboard/period-reports-section";
 import { NoStoreSelected } from "@/components/no-store-selected";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -439,6 +441,18 @@ export default function FinancialsPage() {
           </div>
         }
       />
+
+      {activeStoreId && (
+        <>
+          <FinancialDashboardSection storeId={activeStoreId} currency={cur} />
+          <PeriodReportsSection storeId={activeStoreId} currency={cur} />
+        </>
+      )}
+
+      <div>
+        <h2 className="text-lg font-semibold">{t("financials.pnlTitle")}</h2>
+        <p className="text-sm text-muted-foreground">{t("financials.description")}</p>
+      </div>
 
       <div className="flex flex-wrap gap-1.5">
         {PERIODS.map((opt) => (

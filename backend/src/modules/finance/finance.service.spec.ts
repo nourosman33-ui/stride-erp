@@ -14,8 +14,10 @@ function buildDeps() {
         _sum: { refundSubtotal: null, refundTaxTotal: null, refundTotal: null },
         _count: 0,
       }),
+      groupBy: jest.fn().mockResolvedValue([]),
     },
     salesReturnLine: { findMany: jest.fn().mockResolvedValue([]) },
+    payment: { groupBy: jest.fn().mockResolvedValue([]) },
   };
   const inventory = { getTotalInventoryValue: jest.fn().mockResolvedValue(0) };
   return { prisma, inventory };
@@ -312,6 +314,64 @@ describe("FinanceService", () => {
 
       const pnl = await service.getPnl("store-1", from, to);
       expect(pnl.cogs).toBe(250);
+    });
+  });
+
+  // The daily-expenses module's only two touchpoints into this file (see the
+  // "daily-expenses module glue" section of finance.service.ts) — regression
+  // guards confirming they don't reach into or alter any of the P&L/forecast
+  // math exercised by every test above.
+  describe("getOperatingExpensesTotal — daily-expenses module glue", () => {
+    it("pro-rates active recurring costs over the window, same as getPnl's opex line", async () => {
+      const { service, prisma } = makeService();
+      prisma.operatingExpense.findMany.mockResolvedValue([expense({ amount: 3000 as never, frequency: "monthly" })]);
+      const total = await service.getOperatingExpensesTotal(
+        "store-1",
+        new Date("2026-03-01"),
+        new Date("2026-04-01"),
+      );
+      expect(total).toBeCloseTo((3000 / DAYS_PER_MONTH) * 31, 2);
+    });
+
+    it("returns 0 when there are no active costs", async () => {
+      const { service, prisma } = makeService();
+      prisma.operatingExpense.findMany.mockResolvedValue([]);
+      const total = await service.getOperatingExpensesTotal(
+        "store-1",
+        new Date("2026-03-01"),
+        new Date("2026-04-01"),
+      );
+      expect(total).toBe(0);
+    });
+  });
+
+  describe("getPaymentMethodBreakdown / getRefundsByMethod — daily-expenses module glue", () => {
+    const from = new Date("2026-03-01");
+    const to = new Date("2026-04-01");
+
+    it("maps grouped payment sums onto every method, defaulting absent methods to 0", async () => {
+      const { service, prisma } = makeService();
+      prisma.payment.groupBy.mockResolvedValue([
+        { method: "cash", _sum: { amount: 2047 } },
+        { method: "card", _sum: { amount: 500 } },
+      ]);
+      const result = await service.getPaymentMethodBreakdown("store-1", from, to);
+      expect(result).toEqual({ cash: 2047, card: 500, mobile_wallet: 0, bank_transfer: 0 });
+    });
+
+    it("excludes voided orders via the same REVENUE_STATUS_FILTER getPnl uses", async () => {
+      const { service, prisma } = makeService();
+      prisma.payment.groupBy.mockResolvedValue([]);
+      await service.getPaymentMethodBreakdown("store-1", from, to);
+      const whereArg = prisma.payment.groupBy.mock.calls[0][0].where;
+      expect(whereArg.order.status).toEqual({ not: "voided" });
+    });
+
+    it("maps grouped refund sums onto every method, ignoring exchanges with no refundMethod", async () => {
+      const { service, prisma } = makeService();
+      prisma.salesReturn.groupBy.mockResolvedValue([{ refundMethod: "cash", _sum: { refundTotal: 1067 } }]);
+      const result = await service.getRefundsByMethod("store-1", from, to);
+      expect(result).toEqual({ cash: 1067, card: 0, mobile_wallet: 0, bank_transfer: 0 });
     });
   });
 });

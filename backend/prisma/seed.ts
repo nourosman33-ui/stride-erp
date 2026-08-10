@@ -92,6 +92,24 @@ async function seedCatalogLookups() {
   }
 }
 
+async function seedDailyExpenseCategories() {
+  const categories = [
+    "Supplies",
+    "Food & Drinks",
+    "Transportation",
+    "Maintenance",
+    "Cleaning",
+    "Packaging",
+    "Utilities",
+    "Salaries",
+    "Marketing",
+    "Other",
+  ];
+  for (const name of categories) {
+    await prisma.dailyExpenseCategory.upsert({ where: { name }, update: {}, create: { name } });
+  }
+}
+
 async function seedStore(ownerId: string) {
   let store = await prisma.store.findFirst({ where: { isActive: true } });
   if (!store) {
@@ -495,6 +513,7 @@ async function seedFinancials(storeId: string, ownerId: string) {
 async function main() {
   const { owner, cashier } = await seedRolesAndUsers();
   await seedCatalogLookups();
+  await seedDailyExpenseCategories();
   const store = await seedStore(owner.id);
   await seedFinancials(store.id, owner.id);
   const suppliers = await seedSuppliers();

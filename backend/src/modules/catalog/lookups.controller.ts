@@ -67,12 +67,32 @@ export class LookupsController {
     return this.lookups.createSize(dto.standard, dto.value, dto.sortOrder);
   }
 
+  // Predefined + owner/manager-addable categories for the Daily Expenses feature.
+  // Every role can read (cashiers need the picker); only owner/manager can add.
+  @Get("expense-categories")
+  listExpenseCategories() {
+    return this.lookups.findAllExpenseCategories();
+  }
+
+  @Post("expense-categories")
+  @Roles("owner", "manager")
+  createExpenseCategory(@Body() dto: CreateNamedLookupDto) {
+    return this.lookups.create("dailyExpenseCategory", dto.name);
+  }
+
   // ---------------------------------------------------------- edit / delete
   //
   // One generic pair rather than ten near-identical routes. `kind` is validated
   // against a fixed allow-list so it can never be used to reach another table.
 
-  private static readonly KINDS = ["category", "gender", "productType", "color", "size"] as const;
+  private static readonly KINDS = [
+    "category",
+    "gender",
+    "productType",
+    "color",
+    "size",
+    "dailyExpenseCategory",
+  ] as const;
 
   private assertKind(kind: string) {
     if (!(LookupsController.KINDS as readonly string[]).includes(kind)) {
@@ -93,7 +113,15 @@ export class LookupsController {
   update(
     @Param("kind") kind: string,
     @Param("id") id: string,
-    @Body() body: { name?: string; hexCode?: string; standard?: string; value?: string; sortOrder?: number },
+    @Body()
+    body: {
+      name?: string;
+      hexCode?: string;
+      standard?: string;
+      value?: string;
+      sortOrder?: number;
+      isActive?: boolean;
+    },
   ) {
     switch (this.assertKind(kind)) {
       case "color":
@@ -104,9 +132,14 @@ export class LookupsController {
           value: body.value,
           sortOrder: body.sortOrder,
         });
-      default:
-        if (!body.name?.trim()) throw new BadRequestException("A name is required");
-        return this.lookups.rename(kind as never, id, body.name.trim());
+      default: {
+        const name = body.name?.trim();
+        if (name === undefined && body.isActive === undefined) {
+          throw new BadRequestException("Nothing to update");
+        }
+        if (body.name !== undefined && !name) throw new BadRequestException("A name is required");
+        return this.lookups.rename(kind as never, id, name, body.isActive);
+      }
     }
   }
 
