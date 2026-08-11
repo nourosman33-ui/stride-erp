@@ -16,10 +16,11 @@ function buildPrisma() {
   };
 }
 
-function makeService() {
+function makeService(activeSessionId: string | null = null) {
   const prisma = buildPrisma();
-  const service = new ExpensesService(prisma as any);
-  return { service, prisma };
+  const sessions = { activeSessionId: jest.fn().mockResolvedValue(activeSessionId) };
+  const service = new ExpensesService(prisma as any, sessions as any);
+  return { service, prisma, sessions };
 }
 
 const cashier: AuthenticatedUser = { userId: "user-cashier", email: "c@x.com", roles: ["cashier"] };
@@ -56,6 +57,19 @@ describe("ExpensesService", () => {
       const created = await service.create(baseDto, owner);
       expect(created.status).toBe("approved");
       expect(created.approvedById).toBe(owner.userId);
+    });
+
+    it("stamps the active session so the expense belongs to that business day", async () => {
+      const { service, prisma } = makeService("session-1");
+      await service.create(baseDto, cashier);
+      expect(prisma.dailyExpense.create.mock.calls[0][0].data.sessionId).toBe("session-1");
+    });
+
+    it("still records the expense when no session is open, unattributed rather than blocked", async () => {
+      const { service, prisma } = makeService(null);
+      const created = await service.create(baseDto, cashier);
+      expect(created).toBeDefined();
+      expect(prisma.dailyExpense.create.mock.calls[0][0].data.sessionId).toBeNull();
     });
 
     it("never trusts a client-supplied status — only role determines it", async () => {

@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../../common/audit/audit.module";
 import { FinanceModule } from "../finance/finance.module";
+import { SessionsModule } from "../sessions/sessions.module";
 import { ExpensesController } from "./expenses.controller";
 import { ExpensesService } from "./expenses.service";
 import { ExpenseAnalyticsService } from "./expense-analytics.service";
@@ -11,7 +12,7 @@ import { FinancialDashboardController } from "./financial-dashboard.controller";
 import { ReceiptStorageService } from "./receipt-storage.service";
 
 @Module({
-  imports: [AuditModule, FinanceModule],
+  imports: [AuditModule, FinanceModule, SessionsModule],
   controllers: [ExpensesController, CashCountsController, FinancialDashboardController],
   providers: [
     ExpensesService,

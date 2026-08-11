@@ -30,7 +30,9 @@ function buildDeps() {
     computeTier: jest.fn().mockResolvedValue("bronze"),
   };
   const sales = { checkoutInTx: jest.fn() };
-  return { prisma, audit, inventory, customers, sales, tx, salesReturn };
+  // No session open by default — a return must complete regardless, stamping null.
+  const sessions = { activeSessionId: jest.fn().mockResolvedValue(null) };
+  return { prisma, audit, inventory, customers, sales, sessions, tx, salesReturn };
 }
 
 function makeService(deps = buildDeps()) {
@@ -40,6 +42,7 @@ function makeService(deps = buildDeps()) {
     deps.inventory as never,
     deps.customers as never,
     deps.sales as never,
+    deps.sessions as never,
   );
   return { service, ...deps };
 }

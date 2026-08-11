@@ -6,6 +6,7 @@ type PrismaTx = Prisma.TransactionClient;
 import { AuditService } from "../../common/audit/audit.service";
 import { InventoryService } from "../inventory/inventory.service";
 import { CustomersService } from "../customers/customers.service";
+import { SessionsService } from "../sessions/sessions.service";
 import { CreateSaleDto } from "./dto/create-sale.dto";
 
 // Sub-cent rounding slack when comparing SUM(payments) to grand_total (FR-SAL-3).
@@ -79,6 +80,7 @@ export class SalesService {
     private readonly audit: AuditService,
     private readonly inventory: InventoryService,
     private readonly customers: CustomersService,
+    private readonly sessions: SessionsService,
   ) {}
 
   /**
@@ -272,12 +274,17 @@ export class SalesService {
       seqStore.invoiceSeq,
     ).padStart(6, "0")}`;
 
+    // Null when no session is open. Trading is never blocked on the till being
+    // "started" — the sale still completes, it just isn't attributed to a session.
+    const sessionId = await this.sessions.activeSessionId(dto.storeId);
+
     const created = await tx.salesOrder.create({
       data: {
         storeId: dto.storeId,
         invoiceNumber,
         customerId,
         cashierId,
+        sessionId,
         subtotal,
         discountTotal,
         taxTotal,

@@ -5,6 +5,7 @@ import { AuditService } from "../../common/audit/audit.service";
 import { InventoryService } from "../inventory/inventory.service";
 import { CustomersService } from "../customers/customers.service";
 import { SalesService } from "../sales/sales.service";
+import { SessionsService } from "../sessions/sessions.service";
 import { CreateReturnDto } from "./dto/create-return.dto";
 
 type PrismaTx = Prisma.TransactionClient;
@@ -72,6 +73,7 @@ export class ReturnsService {
     private readonly inventory: InventoryService,
     private readonly customers: CustomersService,
     private readonly sales: SalesService,
+    private readonly sessions: SessionsService,
   ) {}
 
   /**
@@ -249,6 +251,10 @@ export class ReturnsService {
 
       // Created first so every downstream row (ledger entries, loyalty) can reference it
       // directly — no fragile "backfill the rows I just wrote" pass.
+      // Null when no session is open — a return must never be blocked on that.
+      // The replacement sale of an exchange is stamped separately by SalesService.
+      const sessionId = await this.sessions.activeSessionId(order.storeId);
+
       const salesReturn = await tx.salesReturn.create({
         data: {
           storeId: order.storeId,
@@ -256,6 +262,7 @@ export class ReturnsService {
           originalOrderId: order.id,
           customerId: order.customerId,
           processedById: userId,
+          sessionId,
           type: dto.type,
           reason: dto.reason,
           refundSubtotal,

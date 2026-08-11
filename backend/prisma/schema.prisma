@@ -43,6 +43,8 @@ model Store {
   invoiceSeq               Int       @default(0) @map("invoice_seq")
   // Same atomic-increment pattern as invoiceSeq, for sales_return.return_number.
   returnSeq                Int       @default(0) @map("return_seq")
+  // Same again, for business_session.session_number.
+  sessionSeq               Int       @default(0) @map("session_seq")
   isActive                 Boolean   @default(true) @map("is_active")
   createdAt                DateTime  @default(now()) @map("created_at")
   updatedAt                DateTime  @updatedAt @map("updated_at")
@@ -83,6 +85,7 @@ model Store {
   feedTokens          FeedToken[]
   dailyExpenses       DailyExpense[]
   cashCounts          CashCount[]
+  businessSessions    BusinessSession[]
 
   @@map("store")
 }
@@ -119,6 +122,8 @@ model User {
   cashCountsOpened             CashCount[]          @relation("CashCountOpenedBy")
   cashCountsCounted            CashCount[]          @relation("CashCountCountedBy")
   cashCountsCreated            CashCount[]          @relation("CashCountCreatedBy")
+  sessionsStarted              BusinessSession[]    @relation("SessionStartedBy")
+  sessionsEnded                BusinessSession[]    @relation("SessionEndedBy")
 
   @@map("app_user")
 }
@@ -619,10 +624,14 @@ model SalesOrder {
   changeDue      Decimal          @default(0) @map("change_due") @db.Decimal(12, 2)
   status         SalesOrderStatus @default(completed)
   createdAt      DateTime         @default(now()) @map("created_at")
+  /// Business session this sale belongs to. Null when trading happened with no
+  /// session open (or before sessions existed) — never a reason to block a sale.
+  sessionId      String?          @map("session_id")
 
-  store    Store     @relation(fields: [storeId], references: [id])
-  customer Customer? @relation(fields: [customerId], references: [id])
-  cashier  User      @relation("SalesCashier", fields: [cashierId], references: [id])
+  store    Store            @relation(fields: [storeId], references: [id])
+  customer Customer?        @relation(fields: [customerId], references: [id])
+  cashier  User             @relation("SalesCashier", fields: [cashierId], references: [id])
+  session  BusinessSession? @relation(fields: [sessionId], references: [id])
 
   lines         SalesOrderLine[]
   payments      Payment[]
@@ -631,6 +640,7 @@ model SalesOrder {
   exchangedFrom SalesReturn?     @relation("ReturnExchangeOrder")
 
   @@index([storeId, orderDate])
+  @@index([sessionId])
   @@map("sales_order")
 }
 
@@ -847,16 +857,20 @@ model SalesReturn {
   exchangeOrderId String? @unique @map("exchange_order_id")
 
   createdAt DateTime @default(now()) @map("created_at")
+  /// Business session this return/exchange belongs to — see SalesOrder.sessionId.
+  sessionId String?  @map("session_id")
 
   store         Store             @relation(fields: [storeId], references: [id])
   originalOrder SalesOrder        @relation("ReturnOriginalOrder", fields: [originalOrderId], references: [id])
   exchangeOrder SalesOrder?       @relation("ReturnExchangeOrder", fields: [exchangeOrderId], references: [id])
   customer      Customer?         @relation(fields: [customerId], references: [id])
   processedBy   User              @relation("ReturnProcessedBy", fields: [processedById], references: [id])
+  session       BusinessSession?  @relation(fields: [sessionId], references: [id])
   lines         SalesReturnLine[]
 
   @@index([storeId, returnDate])
   @@index([originalOrderId])
+  @@index([sessionId])
   @@map("sales_return")
 }
 
@@ -988,9 +1002,12 @@ model DailyExpense {
   deletedAt      DateTime? @map("deleted_at")
   deletedById    String?   @map("deleted_by")
   deletionReason String?   @map("deletion_reason")
+  /// Business session this expense belongs to — see SalesOrder.sessionId.
+  sessionId      String?   @map("session_id")
 
   store          Store                @relation(fields: [storeId], references: [id])
   category       DailyExpenseCategory @relation(fields: [categoryId], references: [id])
+  session        BusinessSession?     @relation(fields: [sessionId], references: [id])
   createdBy      User                 @relation("DailyExpenseCreatedBy", fields: [createdById], references: [id])
   approvedBy     User?                @relation("DailyExpenseApprovedBy", fields: [approvedById], references: [id])
   rejectedBy     User?                @relation("DailyExpenseRejectedBy", fields: [rejectedById], references: [id])
@@ -1002,6 +1019,7 @@ model DailyExpense {
   @@index([storeId, deletedAt])
   @@index([categoryId])
   @@index([createdById])
+  @@index([sessionId])
   @@map("daily_expense")
 }
 
@@ -1037,4 +1055,60 @@ model CashCount {
   @@unique([storeId, countDate])
   @@index([storeId, countDate])
   @@map("cash_count")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 8 — Business sessions
+//
+// A "business day" here is a session the user opens and closes explicitly, NOT
+// a calendar date. Two sessions can share a calendar date, and one session can
+// span midnight; neither affects the other. Every session figure is derived from
+// the transactions carrying its sessionId, so a closed session's totals cannot
+// drift when later trading happens.
+//
+// sessionId is nullable on the transaction tables on purpose: trading must never
+// be blocked just because nobody pressed Start Day, and all history recorded
+// before this feature existed stays valid and unattributed.
+// ---------------------------------------------------------------------------
+
+enum BusinessSessionStatus {
+  active
+  closed
+}
+
+model BusinessSession {
+  id      String @id @default(uuid())
+  storeId String @map("store_id")
+  /// Human-readable per-store counter (#001, #002 …), via Store.sessionSeq.
+  sessionNumber Int                   @map("session_number")
+  status        BusinessSessionStatus @default(active)
+
+  startedAt   DateTime  @default(now()) @map("started_at")
+  startedById String    @map("started_by")
+  endedAt     DateTime? @map("ended_at")
+  endedById   String?   @map("ended_by")
+
+  /// Counted at Start Day / End Day. Optional — a session is about trading, and
+  /// a shop that doesn't float its drawer should still be able to run one.
+  openingCash Decimal? @map("opening_cash") @db.Decimal(12, 2)
+  closingCash Decimal? @map("closing_cash") @db.Decimal(12, 2)
+  notes       String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  store     Store  @relation(fields: [storeId], references: [id])
+  startedBy User   @relation("SessionStartedBy", fields: [startedById], references: [id])
+  endedBy   User?  @relation("SessionEndedBy", fields: [endedById], references: [id])
+
+  salesOrders   SalesOrder[]
+  salesReturns  SalesReturn[]
+  dailyExpenses DailyExpense[]
+
+  @@unique([storeId, sessionNumber])
+  // Partial-unique "one active session per store" isn't expressible in Prisma
+  // schema, so SessionsService.start enforces it inside a transaction.
+  @@index([storeId, status])
+  @@index([storeId, startedAt])
+  @@map("business_session")
 }

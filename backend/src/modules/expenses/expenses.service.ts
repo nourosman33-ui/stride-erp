@@ -5,6 +5,7 @@ import { AuthenticatedUser } from "../../common/decorators/current-user.decorato
 import { money } from "../finance/finance.constants";
 import { dayWindow, resolveWindow } from "./period-windows";
 import { isElevated } from "./role-utils";
+import { SessionsService } from "../sessions/sessions.service";
 import { CreateDailyExpenseDto } from "./dto/create-daily-expense.dto";
 import { UpdateDailyExpenseDto } from "./dto/update-daily-expense.dto";
 import { ListExpensesQueryDto } from "./dto/list-expenses-query.dto";
@@ -32,7 +33,10 @@ const EXPENSE_INCLUDE = {
  */
 @Injectable()
 export class ExpensesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly sessions: SessionsService,
+  ) {}
 
   async list(query: ListExpensesQueryDto, requester: AuthenticatedUser) {
     const elevated = isElevated(requester.roles);
@@ -112,10 +116,13 @@ export class ExpensesService {
   async create(dto: CreateDailyExpenseDto, requester: AuthenticatedUser) {
     const elevated = isElevated(requester.roles);
     const occurredAt = dto.occurredAt ? new Date(dto.occurredAt) : new Date();
+    // Null when no session is open — recording a spend is never blocked on that.
+    const sessionId = await this.sessions.activeSessionId(dto.storeId);
 
     return this.prisma.dailyExpense.create({
       data: {
         storeId: dto.storeId,
+        sessionId,
         categoryId: dto.categoryId,
         description: dto.description,
         amount: dto.amount,

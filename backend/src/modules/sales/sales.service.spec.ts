@@ -31,7 +31,9 @@ function buildDeps() {
     computeStats: jest.fn().mockResolvedValue({ totalOrders: 0, lifetimeSpending: 0, lastPurchaseAt: null }),
     computeTier: jest.fn().mockResolvedValue("bronze"),
   };
-  return { prisma, audit, inventory, customers, tx };
+  // No session open by default — checkout must work regardless, stamping null.
+  const sessions = { activeSessionId: jest.fn().mockResolvedValue(null) };
+  return { prisma, audit, inventory, customers, sessions, tx };
 }
 
 const VARIANT = {
@@ -46,7 +48,7 @@ const STORE = { id: "store-1", vatRate: 14, loyaltyPointValue: 1, loyaltyPointsP
 describe("SalesService", () => {
   describe("checkout — FR-SAL-1/2/3 + FR-INV-2", () => {
     it("computes totals, deducts stock through InventoryService, and records a completed order", async () => {
-      const { prisma, audit, inventory, customers, tx } = buildDeps();
+      const { prisma, audit, inventory, customers, sessions, tx } = buildDeps();
       prisma.store.findUnique.mockResolvedValue(STORE);
       prisma.productVariant.findMany.mockResolvedValue([VARIANT]);
       inventory.getStockOnHand.mockResolvedValue(10);
@@ -59,7 +61,7 @@ describe("SalesService", () => {
         payments: data.payments.create,
       }));
 
-      const service = new SalesService(prisma as any, audit as any, inventory as any, customers as any);
+      const service = new SalesService(prisma as any, audit as any, inventory as any, customers as any, sessions as any);
       const result = await service.checkout(
         {
           storeId: "store-1",
@@ -99,9 +101,9 @@ describe("SalesService", () => {
     });
 
     it("throws when the store does not exist", async () => {
-      const { prisma, audit, inventory, customers } = buildDeps();
+      const { prisma, audit, inventory, customers, sessions } = buildDeps();
       prisma.store.findUnique.mockResolvedValue(null);
-      const service = new SalesService(prisma as any, audit as any, inventory as any, customers as any);
+      const service = new SalesService(prisma as any, audit as any, inventory as any, customers as any, sessions as any);
 
       await expect(
         service.checkout(
@@ -112,10 +114,10 @@ describe("SalesService", () => {
     });
 
     it("rejects a line whose variant is missing or inactive", async () => {
-      const { prisma, audit, inventory, customers } = buildDeps();
+      const { prisma, audit, inventory, customers, sessions } = buildDeps();
       prisma.store.findUnique.mockResolvedValue(STORE);
       prisma.productVariant.findMany.mockResolvedValue([{ ...VARIANT, isActive: false }]);
-      const service = new SalesService(prisma as any, audit as any, inventory as any, customers as any);
+      const service = new SalesService(prisma as any, audit as any, inventory as any, customers as any, sessions as any);
 
       await expect(
         service.checkout(
@@ -130,10 +132,10 @@ describe("SalesService", () => {
     });
 
     it("rejects when the payment total does not match the invoice grand total (FR-SAL-3)", async () => {
-      const { prisma, audit, inventory, customers } = buildDeps();
+      const { prisma, audit, inventory, customers, sessions } = buildDeps();
       prisma.store.findUnique.mockResolvedValue(STORE);
       prisma.productVariant.findMany.mockResolvedValue([VARIANT]);
-      const service = new SalesService(prisma as any, audit as any, inventory as any, customers as any);
+      const service = new SalesService(prisma as any, audit as any, inventory as any, customers as any, sessions as any);
 
       await expect(
         service.checkout(
@@ -148,11 +150,11 @@ describe("SalesService", () => {
     });
 
     it("rejects a checkout that would oversell stock (FR-INV-1/NFR-1), re-checked inside the transaction", async () => {
-      const { prisma, audit, inventory, customers, tx } = buildDeps();
+      const { prisma, audit, inventory, customers, sessions, tx } = buildDeps();
       prisma.store.findUnique.mockResolvedValue(STORE);
       prisma.productVariant.findMany.mockResolvedValue([VARIANT]);
       inventory.getStockOnHand.mockResolvedValue(1);
-      const service = new SalesService(prisma as any, audit as any, inventory as any, customers as any);
+      const service = new SalesService(prisma as any, audit as any, inventory as any, customers as any, sessions as any);
 
       await expect(
         service.checkout(
@@ -168,10 +170,10 @@ describe("SalesService", () => {
     });
 
     it("rejects a per-line discount larger than the unit price", async () => {
-      const { prisma, audit, inventory, customers } = buildDeps();
+      const { prisma, audit, inventory, customers, sessions } = buildDeps();
       prisma.store.findUnique.mockResolvedValue(STORE);
       prisma.productVariant.findMany.mockResolvedValue([VARIANT]);
-      const service = new SalesService(prisma as any, audit as any, inventory as any, customers as any);
+      const service = new SalesService(prisma as any, audit as any, inventory as any, customers as any, sessions as any);
 
       await expect(
         service.checkout(
@@ -186,10 +188,10 @@ describe("SalesService", () => {
     });
 
     it("rejects redeeming points without an attached customer", async () => {
-      const { prisma, audit, inventory, customers } = buildDeps();
+      const { prisma, audit, inventory, customers, sessions } = buildDeps();
       prisma.store.findUnique.mockResolvedValue(STORE);
       prisma.productVariant.findMany.mockResolvedValue([VARIANT]);
-      const service = new SalesService(prisma as any, audit as any, inventory as any, customers as any);
+      const service = new SalesService(prisma as any, audit as any, inventory as any, customers as any, sessions as any);
 
       await expect(
         service.checkout(
@@ -205,13 +207,13 @@ describe("SalesService", () => {
     });
 
     it("rejects redemption beyond the customer's points balance (checked inside the transaction)", async () => {
-      const { prisma, audit, inventory, customers, tx } = buildDeps();
+      const { prisma, audit, inventory, customers, sessions, tx } = buildDeps();
       prisma.store.findUnique.mockResolvedValue(STORE);
       prisma.customer.findUnique.mockResolvedValue({ id: "cust-1", name: "Amir" });
       prisma.productVariant.findMany.mockResolvedValue([VARIANT]);
       inventory.getStockOnHand.mockResolvedValue(10);
       tx.loyaltyTransaction.aggregate.mockResolvedValue({ _sum: { pointsDelta: 10 } });
-      const service = new SalesService(prisma as any, audit as any, inventory as any, customers as any);
+      const service = new SalesService(prisma as any, audit as any, inventory as any, customers as any, sessions as any);
 
       await expect(
         service.checkout(
@@ -229,7 +231,7 @@ describe("SalesService", () => {
     });
 
     it("creates a customer inline, posts earn/redeem ledger entries, and returns a loyalty snapshot", async () => {
-      const { prisma, audit, inventory, customers, tx } = buildDeps();
+      const { prisma, audit, inventory, customers, sessions, tx } = buildDeps();
       prisma.store.findUnique.mockResolvedValue(STORE);
       prisma.productVariant.findMany.mockResolvedValue([VARIANT]);
       inventory.getStockOnHand.mockResolvedValue(10);
@@ -246,7 +248,7 @@ describe("SalesService", () => {
       customers.getPointsBalance.mockResolvedValue(57);
       customers.computeTier.mockResolvedValue("silver");
 
-      const service = new SalesService(prisma as any, audit as any, inventory as any, customers as any);
+      const service = new SalesService(prisma as any, audit as any, inventory as any, customers as any, sessions as any);
       const result = await service.checkout(
         {
           storeId: "store-1",
@@ -277,9 +279,9 @@ describe("SalesService", () => {
 
   describe("findOne", () => {
     it("throws NotFoundException when the order does not exist", async () => {
-      const { prisma, audit, inventory, customers } = buildDeps();
+      const { prisma, audit, inventory, customers, sessions } = buildDeps();
       prisma.salesOrder.findUnique.mockResolvedValue(null);
-      const service = new SalesService(prisma as any, audit as any, inventory as any, customers as any);
+      const service = new SalesService(prisma as any, audit as any, inventory as any, customers as any, sessions as any);
 
       await expect(service.findOne("missing")).rejects.toThrow(NotFoundException);
     });
@@ -287,7 +289,7 @@ describe("SalesService", () => {
 
   describe("getPosCatalog — cashier-safe read model, must never include cost", () => {
     it("flattens active variants with selling price and quantity, and omits cost fields", async () => {
-      const { prisma, audit, inventory, customers } = buildDeps();
+      const { prisma, audit, inventory, customers, sessions } = buildDeps();
       prisma.productVariant.findMany.mockResolvedValue([
         {
           id: "variant-1",
@@ -308,7 +310,7 @@ describe("SalesService", () => {
       ]);
       inventory.listQuantitiesOnHand.mockResolvedValue(new Map([["variant-1", 7]]));
 
-      const service = new SalesService(prisma as any, audit as any, inventory as any, customers as any);
+      const service = new SalesService(prisma as any, audit as any, inventory as any, customers as any, sessions as any);
       const result = await service.getPosCatalog("store-1");
 
       expect(result).toEqual([
@@ -332,7 +334,7 @@ describe("SalesService", () => {
     });
 
     it("defaults quantity to zero for variants with no ledger activity in this store", async () => {
-      const { prisma, audit, inventory, customers } = buildDeps();
+      const { prisma, audit, inventory, customers, sessions } = buildDeps();
       prisma.productVariant.findMany.mockResolvedValue([
         {
           id: "variant-2",
@@ -352,7 +354,7 @@ describe("SalesService", () => {
       ]);
       inventory.listQuantitiesOnHand.mockResolvedValue(new Map());
 
-      const service = new SalesService(prisma as any, audit as any, inventory as any, customers as any);
+      const service = new SalesService(prisma as any, audit as any, inventory as any, customers as any, sessions as any);
       const result = await service.getPosCatalog("store-1");
 
       expect(result[0]).toMatchObject({ sellingPrice: 620, quantityOnHand: 0 });

@@ -19,8 +19,8 @@ import {
   Bot,
   TrendingUp,
   Wallet,
-  CalendarCheck,
   Sunrise,
+  ListOrdered,
 } from "lucide-react";
 import type { Role } from "@/lib/api/types";
 import type { TranslationKey } from "@/lib/i18n/locale-context";
@@ -76,11 +76,13 @@ export const NAV_GROUPS: NavGroup[] = [
       // No `roles`: recording daily expenses is front-counter work too. Lives under
       // /pos so the cashier route guard in access-control.ts already allows it.
       { labelKey: "expenses.navLabel", href: "/pos/expenses", icon: Wallet },
-      // Opening and closing the till are front-counter work, so no `roles` — and
-      // they live under /pos so the cashier route guard in access-control.ts
-      // already allows them.
-      { labelKey: "startDay.navLabel", href: "/pos/start-day", icon: Sunrise },
-      { labelKey: "endDay.navLabel", href: "/pos/end-day", icon: CalendarCheck },
+      // Start Day and End Day now live on one page, because they are two ends of a
+      // single business session rather than two separate screens. The old
+      // /pos/start-day and /pos/end-day routes redirect here so existing links and
+      // bookmarks keep working. No `roles` — running the trading day is
+      // front-counter work, and /pos is already allowed by the cashier route guard.
+      { labelKey: "session.navLabel", href: "/pos/session", icon: Sunrise },
+      { labelKey: "transactionLog.navLabel", href: "/pos/transactions", icon: ListOrdered },
       { labelKey: "nav.salesHistory", href: "/sales", icon: Receipt, roles: BACK_OFFICE_ROLES },
       { labelKey: "returns.historyTitle", href: "/sales/returns", icon: RotateCcw, roles: BACK_OFFICE_ROLES },
     ],
