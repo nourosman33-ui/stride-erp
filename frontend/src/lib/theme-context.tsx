@@ -4,11 +4,30 @@ import * as React from "react";
 
 /** "system" follows the OS setting live; the other two are explicit user choices. */
 export type ThemeMode = "light" | "dark" | "system";
-export type Accent = "graphite" | "blue" | "emerald" | "violet" | "amber" | "rose";
+export type Accent =
+  | "graphite"
+  | "blue"
+  | "emerald"
+  | "violet"
+  | "amber"
+  | "rose"
+  // Signature themes: unlike the plain accents above, these also paint a layered
+  // gradient behind the app and lift surfaces onto it (see globals.css), so
+  // switching to one visibly changes the whole room rather than just a button.
+  | "aurora"
+  | "sunset"
+  | "ocean"
+  | "midnight";
 
 export const ACCENTS: Accent[] = ["graphite", "blue", "emerald", "violet", "amber", "rose"];
 
-/** Swatch shown in the picker — matches the light-mode --primary of each accent in globals.css. */
+export const SIGNATURE_ACCENTS: Accent[] = ["aurora", "sunset", "ocean", "midnight"];
+
+/** Every selectable accent, in picker order. */
+export const ALL_ACCENTS: Accent[] = [...ACCENTS, ...SIGNATURE_ACCENTS];
+
+/** Swatch shown in the picker — matches the light-mode --primary of each accent in
+ * globals.css. Signature themes use a gradient so the swatch previews their character. */
 export const ACCENT_SWATCH: Record<Accent, string> = {
   graphite: "oklch(0.205 0 0)",
   blue: "oklch(0.54 0.2 260)",
@@ -16,6 +35,10 @@ export const ACCENT_SWATCH: Record<Accent, string> = {
   violet: "oklch(0.53 0.22 295)",
   amber: "oklch(0.72 0.16 70)",
   rose: "oklch(0.57 0.21 15)",
+  aurora: "linear-gradient(135deg, oklch(0.62 0.16 200), oklch(0.55 0.2 300))",
+  sunset: "linear-gradient(135deg, oklch(0.72 0.17 45), oklch(0.6 0.21 10))",
+  ocean: "linear-gradient(135deg, oklch(0.66 0.14 220), oklch(0.5 0.16 250))",
+  midnight: "linear-gradient(135deg, oklch(0.78 0.2 145), oklch(0.55 0.16 265))",
 };
 
 export const THEME_MODE_KEY = "stride_theme_mode";
@@ -62,7 +85,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         ? storedMode
         : "system";
     const nextAccent: Accent =
-      storedAccent && ACCENTS.includes(storedAccent) ? storedAccent : "graphite";
+      storedAccent && ALL_ACCENTS.includes(storedAccent) ? storedAccent : "graphite";
 
     setModeState(nextMode);
     setAccentState(nextAccent);

@@ -19,7 +19,14 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import { useActiveStore } from "@/lib/store-context";
 import { useLocale, type Locale, type TranslationKey } from "@/lib/i18n/locale-context";
-import { ACCENTS, ACCENT_SWATCH, useTheme, type Accent, type ThemeMode } from "@/lib/theme-context";
+import {
+  ACCENTS,
+  ACCENT_SWATCH,
+  SIGNATURE_ACCENTS,
+  useTheme,
+  type Accent,
+  type ThemeMode,
+} from "@/lib/theme-context";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -81,6 +88,10 @@ const ACCENT_LABEL: Record<Accent, TranslationKey> = {
   violet: "theme.accentViolet",
   amber: "theme.accentAmber",
   rose: "theme.accentRose",
+  aurora: "theme.accentAurora",
+  sunset: "theme.accentSunset",
+  ocean: "theme.accentOcean",
+  midnight: "theme.accentMidnight",
 };
 
 function ThemeSwitcher() {
@@ -128,7 +139,33 @@ function ThemeSwitcher() {
             >
               <span
                 className="flex size-5 items-center justify-center rounded-full border"
-                style={{ backgroundColor: ACCENT_SWATCH[a] }}
+                style={{ background: ACCENT_SWATCH[a] }}
+              >
+                {accent === a && <Check className="size-3 text-white drop-shadow" />}
+              </span>
+              {t(ACCENT_LABEL[a])}
+            </button>
+          ))}
+        </div>
+        <DropdownMenuLabel className="flex items-center gap-2 pt-0 text-xs font-normal text-muted-foreground">
+          {t("theme.signature")}
+        </DropdownMenuLabel>
+        <div className="grid grid-cols-2 gap-1 p-1 pt-0">
+          {SIGNATURE_ACCENTS.map((a) => (
+            <button
+              key={a}
+              type="button"
+              onClick={() => setAccent(a)}
+              title={t(ACCENT_LABEL[a])}
+              aria-label={t(ACCENT_LABEL[a])}
+              aria-pressed={accent === a}
+              className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-[11px] transition hover:bg-accent ${
+                accent === a ? "bg-accent font-medium" : ""
+              }`}
+            >
+              <span
+                className="flex size-5 shrink-0 items-center justify-center rounded-full border"
+                style={{ background: ACCENT_SWATCH[a] }}
               >
                 {accent === a && <Check className="size-3 text-white drop-shadow" />}
               </span>

@@ -1,5 +1,10 @@
 import { apiFetch } from "./client";
-import type { Customer, CustomerDetail, CustomerWithStats } from "./types";
+import type { Customer, CustomerDetail, CustomerWithStats, LoyaltyTier } from "./types";
+
+/** A typeahead hit — CustomerWithStats plus the tier the server already resolved. */
+export interface CustomerSearchHit extends CustomerWithStats {
+  tier: LoyaltyTier;
+}
 
 export interface CreateCustomerInput {
   name: string;
@@ -18,6 +23,11 @@ export function listCustomers(search?: string) {
 
 export function getCustomerByPhone(phone: string) {
   return apiFetch<CustomerWithStats | null>(`/customers/phone/${encodeURIComponent(phone)}`);
+}
+
+/** Partial name or partial phone — powers the POS customer typeahead. */
+export function searchCustomers(q: string, storeId?: string) {
+  return apiFetch<CustomerSearchHit[]>("/customers/search", { params: { q, storeId } });
 }
 
 export function getCustomer(id: string, storeId?: string) {

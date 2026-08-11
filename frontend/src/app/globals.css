@@ -183,6 +183,153 @@
   --sidebar-primary-foreground: oklch(0.16 0.03 15);
 }
 
+/* ---------------------------------------------------------------------------
+   Signature themes.
+
+   Unlike the plain accents above — which only re-tint --primary — these also
+   set --app-backdrop (a layered gradient painted behind the whole app) and
+   tint the surface tokens, so the app reads as a designed space rather than
+   grey cards on grey. Two rules keep them usable rather than merely pretty:
+
+   1. --foreground / --card-foreground stay at full contrast against their own
+      surface. The colour lives in the *backdrop* and the accents, never in the
+      body text.
+   2. Cards get a translucent fill so the backdrop shows through, but the alpha
+      stays high enough that text never competes with the gradient behind it.
+   --------------------------------------------------------------------------- */
+
+/* Aurora — cool teal→violet wash. */
+[data-accent="aurora"] {
+  --primary: oklch(0.55 0.16 250);
+  --primary-foreground: oklch(0.99 0 0);
+  --ring: oklch(0.55 0.16 250);
+  --sidebar-primary: oklch(0.55 0.16 250);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --background: oklch(0.975 0.012 230);
+  --card: oklch(1 0 0 / 78%);
+  --sidebar: oklch(0.985 0.015 250 / 82%);
+  --border: oklch(0.88 0.02 250);
+  --app-backdrop:
+    radial-gradient(1100px 620px at 8% -12%, oklch(0.9 0.09 205 / 0.75), transparent 62%),
+    radial-gradient(900px 520px at 96% 4%, oklch(0.9 0.09 305 / 0.62), transparent 60%),
+    radial-gradient(900px 640px at 46% 108%, oklch(0.93 0.08 165 / 0.55), transparent 64%);
+}
+.dark[data-accent="aurora"] {
+  --primary: oklch(0.74 0.15 215);
+  --primary-foreground: oklch(0.15 0.03 240);
+  --ring: oklch(0.74 0.15 215);
+  --sidebar-primary: oklch(0.74 0.15 215);
+  --sidebar-primary-foreground: oklch(0.15 0.03 240);
+  --background: oklch(0.16 0.025 255);
+  --card: oklch(0.23 0.03 255 / 72%);
+  --sidebar: oklch(0.19 0.03 255 / 80%);
+  --border: oklch(1 0 0 / 12%);
+  --muted-foreground: oklch(0.76 0.02 250);
+  --app-backdrop:
+    radial-gradient(1100px 620px at 8% -12%, oklch(0.5 0.15 215 / 0.5), transparent 62%),
+    radial-gradient(900px 520px at 96% 4%, oklch(0.46 0.17 305 / 0.45), transparent 60%),
+    radial-gradient(900px 640px at 46% 108%, oklch(0.45 0.13 170 / 0.4), transparent 64%);
+}
+
+/* Sunset — warm amber→rose. */
+[data-accent="sunset"] {
+  --primary: oklch(0.6 0.19 25);
+  --primary-foreground: oklch(0.99 0 0);
+  --ring: oklch(0.6 0.19 25);
+  --sidebar-primary: oklch(0.6 0.19 25);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --background: oklch(0.98 0.014 60);
+  --card: oklch(1 0 0 / 80%);
+  --sidebar: oklch(0.985 0.018 45 / 82%);
+  --border: oklch(0.89 0.025 45);
+  --app-backdrop:
+    radial-gradient(1000px 580px at 4% -10%, oklch(0.91 0.1 65 / 0.8), transparent 62%),
+    radial-gradient(950px 560px at 98% 6%, oklch(0.89 0.1 15 / 0.6), transparent 60%),
+    radial-gradient(850px 620px at 52% 110%, oklch(0.92 0.08 330 / 0.45), transparent 64%);
+}
+.dark[data-accent="sunset"] {
+  --primary: oklch(0.75 0.16 45);
+  --primary-foreground: oklch(0.16 0.04 40);
+  --ring: oklch(0.75 0.16 45);
+  --sidebar-primary: oklch(0.75 0.16 45);
+  --sidebar-primary-foreground: oklch(0.16 0.04 40);
+  --background: oklch(0.17 0.028 30);
+  --card: oklch(0.24 0.035 30 / 72%);
+  --sidebar: oklch(0.2 0.032 30 / 80%);
+  --border: oklch(1 0 0 / 12%);
+  --muted-foreground: oklch(0.78 0.025 45);
+  --app-backdrop:
+    radial-gradient(1000px 580px at 4% -10%, oklch(0.52 0.16 55 / 0.5), transparent 62%),
+    radial-gradient(950px 560px at 98% 6%, oklch(0.45 0.18 12 / 0.45), transparent 60%),
+    radial-gradient(850px 620px at 52% 110%, oklch(0.42 0.14 330 / 0.4), transparent 64%);
+}
+
+/* Ocean — deep blue, calm and corporate but not grey. */
+[data-accent="ocean"] {
+  --primary: oklch(0.5 0.15 245);
+  --primary-foreground: oklch(0.99 0 0);
+  --ring: oklch(0.5 0.15 245);
+  --sidebar-primary: oklch(0.5 0.15 245);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --background: oklch(0.975 0.012 235);
+  --card: oklch(1 0 0 / 80%);
+  --sidebar: oklch(0.98 0.016 240 / 84%);
+  --border: oklch(0.88 0.022 240);
+  --app-backdrop:
+    radial-gradient(1050px 600px at 100% -8%, oklch(0.9 0.08 225 / 0.75), transparent 62%),
+    radial-gradient(900px 560px at 0% 12%, oklch(0.92 0.07 250 / 0.6), transparent 60%),
+    radial-gradient(900px 620px at 50% 112%, oklch(0.93 0.06 200 / 0.5), transparent 64%);
+}
+.dark[data-accent="ocean"] {
+  --primary: oklch(0.7 0.14 235);
+  --primary-foreground: oklch(0.14 0.03 245);
+  --ring: oklch(0.7 0.14 235);
+  --sidebar-primary: oklch(0.7 0.14 235);
+  --sidebar-primary-foreground: oklch(0.14 0.03 245);
+  --background: oklch(0.15 0.03 245);
+  --card: oklch(0.22 0.035 245 / 72%);
+  --sidebar: oklch(0.18 0.032 245 / 80%);
+  --border: oklch(1 0 0 / 12%);
+  --muted-foreground: oklch(0.76 0.022 240);
+  --app-backdrop:
+    radial-gradient(1050px 600px at 100% -8%, oklch(0.45 0.15 230 / 0.55), transparent 62%),
+    radial-gradient(900px 560px at 0% 12%, oklch(0.4 0.15 255 / 0.45), transparent 60%),
+    radial-gradient(900px 620px at 50% 112%, oklch(0.42 0.12 200 / 0.4), transparent 64%);
+}
+
+/* Midnight — near-black with an electric lime accent. The boldest of the set. */
+[data-accent="midnight"] {
+  --primary: oklch(0.52 0.15 160);
+  --primary-foreground: oklch(0.99 0 0);
+  --ring: oklch(0.52 0.15 160);
+  --sidebar-primary: oklch(0.52 0.15 160);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --background: oklch(0.97 0.01 160);
+  --card: oklch(1 0 0 / 82%);
+  --sidebar: oklch(0.98 0.012 165 / 84%);
+  --border: oklch(0.88 0.02 165);
+  --app-backdrop:
+    radial-gradient(1000px 580px at 6% -10%, oklch(0.91 0.09 150 / 0.7), transparent 62%),
+    radial-gradient(900px 540px at 98% 8%, oklch(0.9 0.07 265 / 0.55), transparent 60%),
+    radial-gradient(880px 620px at 50% 110%, oklch(0.93 0.06 190 / 0.45), transparent 64%);
+}
+.dark[data-accent="midnight"] {
+  --primary: oklch(0.82 0.2 150);
+  --primary-foreground: oklch(0.13 0.03 160);
+  --ring: oklch(0.82 0.2 150);
+  --sidebar-primary: oklch(0.82 0.2 150);
+  --sidebar-primary-foreground: oklch(0.13 0.03 160);
+  --background: oklch(0.13 0.018 250);
+  --card: oklch(0.19 0.025 250 / 70%);
+  --sidebar: oklch(0.15 0.022 250 / 82%);
+  --border: oklch(1 0 0 / 13%);
+  --muted-foreground: oklch(0.75 0.02 200);
+  --app-backdrop:
+    radial-gradient(1000px 580px at 6% -10%, oklch(0.45 0.16 155 / 0.42), transparent 62%),
+    radial-gradient(900px 540px at 98% 8%, oklch(0.4 0.15 275 / 0.42), transparent 60%),
+    radial-gradient(880px 620px at 50% 110%, oklch(0.4 0.12 195 / 0.35), transparent 64%);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -241,7 +388,28 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* Signature themes set --app-backdrop; the plain accents leave it unset and
+       fall through to a flat background exactly as before. `fixed` keeps the
+       gradient anchored to the viewport so it doesn't slide away on long pages. */
+    background-image: var(--app-backdrop, none);
+    background-attachment: fixed;
+    background-repeat: no-repeat;
   }
+
+}
+
+/* The translucent card/sidebar fills defined by the signature themes only read as
+   "glass" if what's behind them is actually blurred. Scoped to those themes so the
+   default flat accents keep fully opaque surfaces, and written as a literal length
+   (not a custom property) so there's no var() that could resolve empty and silently
+   invalidate the whole declaration. Browsers without backdrop-filter simply get the
+   translucent card, which is still legible. */
+[data-accent="aurora"] [data-slot="card"],
+[data-accent="sunset"] [data-slot="card"],
+[data-accent="ocean"] [data-slot="card"],
+[data-accent="midnight"] [data-slot="card"] {
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
 }
 
 /* ---------------------------------------------------------------------------
@@ -367,9 +535,13 @@
   }
 
   /* Shadows and rounded cards are screen affordances; on paper they just muddy
-     the edges or waste toner. */
+     the edges or waste toner. The backdrop-filter reset matters because the
+     signature themes blur any [data-slot="card"], which would smear a printed
+     document that happens to be built out of cards. */
   .print-document * {
     box-shadow: none !important;
     text-shadow: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
   }
 }

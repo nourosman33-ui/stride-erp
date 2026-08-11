@@ -29,12 +29,15 @@ export class CustomersService {
   }
 
   async findAll(search?: string) {
+    // Strip formatting from the phone side so "0114 172" still matches
+    // "01141728482", the same way the POS typeahead does.
+    const digits = search?.replace(/\D/g, "") ?? "";
     const customers = await this.prisma.customer.findMany({
       where: search
         ? {
             OR: [
               { name: { contains: search, mode: "insensitive" } },
-              { phone: { contains: search } },
+              ...(digits.length >= 2 ? [{ phone: { contains: digits } }] : []),
             ],
           }
         : undefined,
@@ -48,6 +51,87 @@ export class CustomersService {
     const customer = await this.prisma.customer.findUnique({ where: { phone } });
     if (!customer) return null;
     return this.withStats(customer);
+  }
+
+  /**
+   * Typeahead for the POS customer picker: matches a partial name OR a partial
+   * phone, so a cashier can find someone from a few letters or the last digits
+   * rather than typing a number exactly.
+   *
+   * Deliberately not `findAll`: that runs two aggregate queries *per* customer
+   * (`withStats`), which is fine for a 50-row directory page but not for a query
+   * that re-fires on every keystroke. Here the points and spend totals are
+   * fetched with one grouped query each across the whole match set, so the cost
+   * is a fixed 4 queries no matter how many customers come back.
+   */
+  async search(term: string, storeId?: string, limit = 8) {
+    const trimmed = term.trim();
+    if (trimmed.length < 2) return [];
+
+    // Phones get typed with spaces/dashes; digits-only matching means "0114 172"
+    // still finds "01141728482".
+    const digits = trimmed.replace(/\D/g, "");
+
+    const customers = await this.prisma.customer.findMany({
+      where: {
+        OR: [
+          { name: { contains: trimmed, mode: "insensitive" } },
+          ...(digits.length >= 2 ? [{ phone: { contains: digits } }] : []),
+        ],
+      },
+      orderBy: { name: "asc" },
+      take: limit,
+    });
+    if (customers.length === 0) return [];
+
+    const ids = customers.map((c) => c.id);
+    const [pointRows, spendRows, store] = await Promise.all([
+      this.prisma.loyaltyTransaction.groupBy({
+        by: ["customerId"],
+        where: { customerId: { in: ids } },
+        _sum: { pointsDelta: true },
+      }),
+      this.prisma.salesOrder.groupBy({
+        by: ["customerId"],
+        where: { customerId: { in: ids }, status: { not: "voided" } },
+        _sum: { grandTotal: true },
+        _count: true,
+        _max: { orderDate: true },
+      }),
+      storeId
+        ? this.prisma.store.findUnique({ where: { id: storeId } })
+        : this.prisma.store.findFirst({ where: { isActive: true } }),
+    ]);
+
+    const pointsBy = new Map(pointRows.map((r) => [r.customerId, r._sum.pointsDelta ?? 0]));
+    const spendBy = new Map(
+      spendRows.map((r) => [
+        r.customerId,
+        {
+          lifetimeSpending: Number(r._sum.grandTotal ?? 0),
+          totalOrders: r._count,
+          lastPurchaseAt: r._max.orderDate,
+        },
+      ]),
+    );
+
+    const tierOf = (spend: number): LoyaltyTier => {
+      if (!store) return "bronze";
+      if (spend >= Number(store.loyaltyPlatinumThreshold)) return "platinum";
+      if (spend >= Number(store.loyaltyGoldThreshold)) return "gold";
+      if (spend >= Number(store.loyaltySilverThreshold)) return "silver";
+      return "bronze";
+    };
+
+    return customers.map((c) => {
+      const spend = spendBy.get(c.id) ?? { lifetimeSpending: 0, totalOrders: 0, lastPurchaseAt: null };
+      return {
+        ...c,
+        ...spend,
+        pointsBalance: pointsBy.get(c.id) ?? 0,
+        tier: tierOf(spend.lifetimeSpending),
+      };
+    });
   }
 
   async findOne(id: string, storeId?: string) {

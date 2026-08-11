@@ -26,7 +26,15 @@ export class CustomersController {
     return this.customersService.findAll(search);
   }
 
-  // Registered before ":id" so "phone" isn't swallowed by the dynamic id route.
+  // Registered before ":id" so these aren't swallowed by the dynamic id route.
+
+  /** Typeahead for the POS picker — partial name or partial phone. */
+  @Get("search")
+  @Roles("owner", "manager", "cashier")
+  search(@Query("q") q: string, @Query("storeId") storeId?: string) {
+    return this.customersService.search(q ?? "", storeId);
+  }
+
   @Get("phone/:phone")
   findByPhone(@Param("phone") phone: string) {
     return this.customersService.findByPhone(phone);

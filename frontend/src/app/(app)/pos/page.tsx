@@ -22,7 +22,7 @@ import { toast } from "sonner";
 import { useActiveStore } from "@/lib/store-context";
 import { useLocale, type TranslationKey } from "@/lib/i18n/locale-context";
 import { checkout, getPosCatalog, type PosCatalogItem } from "@/lib/api/sales";
-import { createCustomer, getCustomerByPhone } from "@/lib/api/customers";
+import { createCustomer, searchCustomers } from "@/lib/api/customers";
 import type { CustomerWithStats, PaymentMethodType, SalesOrder } from "@/lib/api/types";
 import { formatDateTime, formatMoney, toNumber } from "@/lib/format";
 import { PageHeader } from "@/components/layout/page-header";
@@ -252,10 +252,12 @@ export default function PosPage() {
     return () => clearTimeout(id);
   }, [phoneQuery]);
 
-  const { data: foundCustomer, isFetching: customerLookupLoading } = useQuery({
-    queryKey: ["customer-by-phone", debouncedPhone],
-    queryFn: () => getCustomerByPhone(debouncedPhone),
-    enabled: debouncedPhone.length >= 4 && !selectedCustomer,
+  // Partial name OR partial phone — the cashier shouldn't have to key a full
+  // number, and often only knows the customer by name.
+  const { data: customerMatches, isFetching: customerLookupLoading } = useQuery({
+    queryKey: ["customer-search", debouncedPhone, activeStoreId],
+    queryFn: () => searchCustomers(debouncedPhone, activeStoreId ?? undefined),
+    enabled: debouncedPhone.length >= 2 && !selectedCustomer,
   });
 
   const filteredGroups = React.useMemo(() => {
@@ -581,28 +583,40 @@ export default function PosPage() {
                       className="ps-9"
                     />
                   </div>
-                  {debouncedPhone.length >= 4 && (
-                    <div className="rounded-md border p-2.5 text-sm">
+                  {debouncedPhone.length >= 2 && (
+                    <div className="overflow-hidden rounded-md border text-sm">
                       {customerLookupLoading ? (
-                        <Loader2 className="size-4 animate-spin text-muted-foreground" />
-                      ) : foundCustomer ? (
-                        <button
-                          type="button"
-                          className="flex w-full items-center justify-between text-start hover:opacity-80"
-                          onClick={() => setSelectedCustomer(foundCustomer)}
-                        >
-                          <span>
-                            {t("pos.customerFound", {
-                              name: foundCustomer.name,
-                              points: foundCustomer.pointsBalance,
-                              tier: t(
-                                `loyaltyTiers.${computeTierLocal(foundCustomer.lifetimeSpending, thresholds)}` as TranslationKey,
-                              ),
-                            })}
-                          </span>
-                        </button>
+                        <div className="flex items-center gap-2 p-2.5 text-muted-foreground">
+                          <Loader2 className="size-4 animate-spin" />
+                          {t("pos.customerSearching")}
+                        </div>
+                      ) : customerMatches && customerMatches.length > 0 ? (
+                        <ul className="max-h-56 overflow-y-auto">
+                          {customerMatches.map((c) => (
+                            <li key={c.id}>
+                              <button
+                                type="button"
+                                className="flex w-full items-center justify-between gap-2 border-b p-2.5 text-start last:border-b-0 hover:bg-accent"
+                                onClick={() => setSelectedCustomer(c)}
+                              >
+                                <span className="min-w-0">
+                                  <span className="block truncate font-medium">{c.name}</span>
+                                  <span className="block truncate text-xs text-muted-foreground">
+                                    {c.phone ?? "—"}
+                                  </span>
+                                </span>
+                                <span className="shrink-0 text-end text-xs text-muted-foreground">
+                                  <span className="block">{c.pointsBalance} pts</span>
+                                  <span className="block">
+                                    {t(`loyaltyTiers.${c.tier}` as TranslationKey)}
+                                  </span>
+                                </span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
                       ) : (
-                        <p className="text-muted-foreground">{t("pos.customerNotFound")}</p>
+                        <p className="p-2.5 text-muted-foreground">{t("pos.customerNotFound")}</p>
                       )}
                     </div>
                   )}
