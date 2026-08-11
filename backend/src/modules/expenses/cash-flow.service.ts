@@ -18,6 +18,13 @@ export interface CashFlowSummary {
   actualClosingCash: number | null;
   difference: number | null;
   status: CashFlowStatus;
+  /** Whether the till has actually been opened for trading today — not merely
+   * whether a CashCount row exists (the closing count creates one too). */
+  isOpen: boolean;
+  openedBy: { id: string; fullName: string } | null;
+  openedAt: string | null;
+  /** Yesterday's counted cash, offered as the carry-forward float suggestion. */
+  previousClosingCash: number | null;
   countedBy: { id: string; fullName: string } | null;
   countedAt: string | null;
   /** Cash-method pending expenses not yet reflected above — see requirement's ask
@@ -44,16 +51,30 @@ export class CashFlowService {
   async computeCashFlow(storeId: string, date: Date): Promise<CashFlowSummary> {
     const window = dayWindow(date);
 
-    const [cashCount, paymentBreakdown, refundsByMethod, expenseWindow, pendingCash] = await Promise.all([
-      this.prisma.cashCount.findUnique({
-        where: { storeId_countDate: { storeId, countDate: dbDateOnly(date) } },
-        include: { countedBy: { select: { id: true, fullName: true } } },
-      }),
-      this.finance.getPaymentMethodBreakdown(storeId, window.from, window.to),
-      this.finance.getRefundsByMethod(storeId, window.from, window.to),
-      this.expenseAnalytics.getWindowAnalytics(storeId, window.from, window.to),
-      this.expenses.getPendingSummary(storeId, undefined, "cash"),
-    ]);
+    const [cashCount, paymentBreakdown, refundsByMethod, expenseWindow, pendingCash, previousCount] =
+      await Promise.all([
+        this.prisma.cashCount.findUnique({
+          where: { storeId_countDate: { storeId, countDate: dbDateOnly(date) } },
+          include: {
+            openedBy: { select: { id: true, fullName: true } },
+            countedBy: { select: { id: true, fullName: true } },
+          },
+        }),
+        this.finance.getPaymentMethodBreakdown(storeId, window.from, window.to),
+        this.finance.getRefundsByMethod(storeId, window.from, window.to),
+        this.expenseAnalytics.getWindowAnalytics(storeId, window.from, window.to),
+        this.expenses.getPendingSummary(storeId, undefined, "cash"),
+        // Most recent counted day before this one — the float that should carry over.
+        this.prisma.cashCount.findFirst({
+          where: {
+            storeId,
+            countDate: { lt: dbDateOnly(date) },
+            actualClosingCash: { not: null },
+          },
+          orderBy: { countDate: "desc" },
+          select: { actualClosingCash: true },
+        }),
+      ]);
 
     const openingCash = cashCount ? Number(cashCount.openingCash) : 0;
     const cashSales = paymentBreakdown.cash;
@@ -78,18 +99,26 @@ export class CashFlowService {
       actualClosingCash,
       difference,
       status,
+      isOpen: cashCount?.openedAt != null,
+      openedBy: cashCount?.openedBy ?? null,
+      openedAt: cashCount?.openedAt?.toISOString() ?? null,
+      previousClosingCash:
+        previousCount?.actualClosingCash != null ? Number(previousCount.actualClosingCash) : null,
       countedBy: cashCount?.countedBy ?? null,
       countedAt: cashCount?.countedAt?.toISOString() ?? null,
       pendingCashImpact: pendingCash,
     };
   }
 
+  /** Opens the till for trading with a starting float. Stamps who and when, so a
+   * zero float is still recognisably "opened" rather than looking untouched. */
   setOpeningCash(storeId: string, date: Date, amount: number, userId: string) {
     const countDate = dbDateOnly(date);
+    const openedAt = new Date();
     return this.prisma.cashCount.upsert({
       where: { storeId_countDate: { storeId, countDate } },
-      update: { openingCash: amount },
-      create: { storeId, countDate, openingCash: amount, createdById: userId },
+      update: { openingCash: amount, openedById: userId, openedAt },
+      create: { storeId, countDate, openingCash: amount, openedById: userId, openedAt, createdById: userId },
     });
   }
 
@@ -113,6 +142,7 @@ export class CashFlowService {
     return this.prisma.cashCount.findMany({
       where: { storeId, countDate: { gte: dbDateOnly(from), lt: dbDateOnly(to) } },
       include: {
+        openedBy: { select: { id: true, fullName: true } },
         countedBy: { select: { id: true, fullName: true } },
         createdBy: { select: { id: true, fullName: true } },
       },

@@ -61,6 +61,12 @@ export interface CashFlowSummary {
   actualClosingCash: number | null;
   difference: number | null;
   status: CashFlowStatus;
+  /** Whether the till has been opened for trading today. */
+  isOpen: boolean;
+  openedBy: { id: string; fullName: string } | null;
+  openedAt: string | null;
+  /** Last counted closing cash before today — the carry-forward float suggestion. */
+  previousClosingCash: number | null;
   countedBy: { id: string; fullName: string } | null;
   countedAt: string | null;
   pendingCashImpact: { count: number; amount: number };

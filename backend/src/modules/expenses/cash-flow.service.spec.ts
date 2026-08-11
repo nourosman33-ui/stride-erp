@@ -6,10 +6,13 @@ function makeService(overrides: {
   cashRefunds?: number;
   cashExpenses?: number;
   pending?: { count: number; amount: number };
+  /** Most recent counted day before this one, for the carry-forward suggestion. */
+  previousCount?: { actualClosingCash: number } | null;
 } = {}) {
   const prisma = {
     cashCount: {
       findUnique: jest.fn().mockResolvedValue(overrides.cashCount ?? null),
+      findFirst: jest.fn().mockResolvedValue(overrides.previousCount ?? null),
       upsert: jest.fn((args: any) => ({ id: "cc-1", ...args.create, ...args.update })),
     },
   };
@@ -104,6 +107,72 @@ describe("CashFlowService", () => {
       const result = await service.computeCashFlow("store-1", new Date("2026-08-10"));
       expect(result.expectedClosingCash).toBe(1000);
       expect(result.pendingCashImpact).toEqual({ count: 2, amount: 150 });
+    });
+  });
+
+  describe("open/closed state", () => {
+    it("reports the day as not open when no CashCount row exists", async () => {
+      const { service } = makeService();
+      const result = await service.computeCashFlow("store-1", new Date("2026-08-10"));
+      expect(result.isOpen).toBe(false);
+      expect(result.openedBy).toBeNull();
+    });
+
+    it("reports not open when a row exists from the closing count but was never opened", async () => {
+      // The closing count creates a row too, so row-existence alone must not be
+      // read as "the till was opened".
+      const { service } = makeService({
+        cashCount: {
+          openingCash: 0,
+          actualClosingCash: 900,
+          openedAt: null,
+          openedBy: null,
+          countedBy: null,
+          countedAt: new Date(),
+        },
+      });
+      const result = await service.computeCashFlow("store-1", new Date("2026-08-10"));
+      expect(result.isOpen).toBe(false);
+    });
+
+    it("reports open once openedAt is stamped, even with a zero float", async () => {
+      const { service } = makeService({
+        cashCount: {
+          openingCash: 0,
+          actualClosingCash: null,
+          openedAt: new Date("2026-08-10T08:00:00Z"),
+          openedBy: { id: "u1", fullName: "Front Register" },
+          countedBy: null,
+          countedAt: null,
+        },
+      });
+      const result = await service.computeCashFlow("store-1", new Date("2026-08-10"));
+      expect(result.isOpen).toBe(true);
+      expect(result.openedBy).toEqual({ id: "u1", fullName: "Front Register" });
+    });
+
+    it("offers the last counted closing cash as the carry-forward float", async () => {
+      const { service } = makeService({ previousCount: { actualClosingCash: 1750 } });
+      const result = await service.computeCashFlow("store-1", new Date("2026-08-10"));
+      expect(result.previousClosingCash).toBe(1750);
+    });
+
+    it("returns a null carry-forward when no earlier day was ever counted", async () => {
+      const { service } = makeService();
+      const result = await service.computeCashFlow("store-1", new Date("2026-08-10"));
+      expect(result.previousClosingCash).toBeNull();
+    });
+  });
+
+  describe("setOpeningCash", () => {
+    it("stamps who opened the till and when, so a zero float still counts as opened", async () => {
+      const { service, prisma } = makeService();
+      await service.setOpeningCash("store-1", new Date("2026-08-10"), 0, "user-1");
+      const args = prisma.cashCount.upsert.mock.calls[0][0];
+      expect(args.create.openedById).toBe("user-1");
+      expect(args.create.openedAt).toBeInstanceOf(Date);
+      expect(args.update.openedById).toBe("user-1");
+      expect(args.update.openedAt).toBeInstanceOf(Date);
     });
   });
 });

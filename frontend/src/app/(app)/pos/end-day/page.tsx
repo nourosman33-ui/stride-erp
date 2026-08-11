@@ -1,16 +1,12 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Loader2, Printer } from "lucide-react";
 import { toast } from "sonner";
 
-import {
-  getCashFlow,
-  getDailyClosing,
-  recordActualClosingCash,
-  setOpeningCash,
-} from "@/lib/api/financial-dashboard";
+import { getCashFlow, getDailyClosing, recordActualClosingCash } from "@/lib/api/financial-dashboard";
 import { useAuth } from "@/lib/auth-context";
 import { useActiveStore } from "@/lib/store-context";
 import { useLocale } from "@/lib/i18n/locale-context";
@@ -61,7 +57,6 @@ export default function EndOfDayPage() {
   const queryClient = useQueryClient();
   const date = todayIso();
 
-  const [openingInput, setOpeningInput] = React.useState("");
   const [countedInput, setCountedInput] = React.useState("");
 
   const { data: closing, isLoading: closingLoading } = useQuery({
@@ -80,16 +75,6 @@ export default function EndOfDayPage() {
     queryClient.invalidateQueries({ queryKey: ["daily-closing"] });
     queryClient.invalidateQueries({ queryKey: ["cash-flow"] });
   }
-
-  const openingMutation = useMutation({
-    mutationFn: (amount: number) => setOpeningCash(activeStoreId!, date, amount),
-    onSuccess: () => {
-      invalidate();
-      toast.success(t("cashFlow.saved"));
-      setOpeningInput("");
-    },
-    onError: (err) => toast.error(err instanceof Error ? err.message : t("cashFlow.saveFailed")),
-  });
 
   const closeDayMutation = useMutation({
     mutationFn: (amount: number) => recordActualClosingCash(activeStoreId!, date, amount),
@@ -241,24 +226,13 @@ export default function EndOfDayPage() {
                   />
                 </div>
 
-                {cashFlow.openingCash === 0 && (
-                  <div className="flex gap-2">
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder={t("cashFlow.setOpeningCash")}
-                      value={openingInput}
-                      onChange={(e) => setOpeningInput(e.target.value)}
-                      className="h-9"
-                    />
-                    <Button
-                      variant="outline"
-                      disabled={!openingInput || openingMutation.isPending}
-                      onClick={() => openingMutation.mutate(Number(openingInput))}
-                    >
-                      {openingMutation.isPending && <Loader2 className="size-4 animate-spin" />}
-                      {t("common.save")}
+                {/* Opening the till belongs to Start of Day — point there rather than
+                    offering a second place to do it and risk the two disagreeing. */}
+                {!cashFlow.isOpen && (
+                  <div className="flex items-center justify-between gap-2 rounded-md border border-dashed p-2.5">
+                    <p className="text-xs text-muted-foreground">{t("endDay.notOpenedHint")}</p>
+                    <Button asChild variant="outline" size="sm">
+                      <Link href="/pos/start-day">{t("startDay.navLabel")}</Link>
                     </Button>
                   </div>
                 )}

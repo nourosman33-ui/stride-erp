@@ -116,6 +116,7 @@ model User {
   dailyExpensesRejected        DailyExpense[]       @relation("DailyExpenseRejectedBy")
   dailyExpensesLastModified    DailyExpense[]       @relation("DailyExpenseLastModifiedBy")
   dailyExpensesDeleted         DailyExpense[]       @relation("DailyExpenseDeletedBy")
+  cashCountsOpened             CashCount[]          @relation("CashCountOpenedBy")
   cashCountsCounted            CashCount[]          @relation("CashCountCountedBy")
   cashCountsCreated            CashCount[]          @relation("CashCountCreatedBy")
 
@@ -1014,6 +1015,12 @@ model CashCount {
   countDate         DateTime  @map("count_date") @db.Date
   openingCash       Decimal   @default(0) @map("opening_cash") @db.Decimal(12, 2)
   actualClosingCash Decimal?  @map("actual_closing_cash") @db.Decimal(12, 2)
+  // Stamped when the till is opened for trading. Distinct from the row simply
+  // existing — a row is also created by the closing count, so without this there
+  // is no way to tell "opened with a zero float" from "never opened". Mirrors the
+  // countedBy/countedAt pair on the closing side.
+  openedById        String?   @map("opened_by")
+  openedAt          DateTime? @map("opened_at")
   countedById       String?   @map("counted_by")
   countedAt         DateTime? @map("counted_at")
   notes             String?
@@ -1023,6 +1030,7 @@ model CashCount {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   store     Store @relation(fields: [storeId], references: [id])
+  openedBy  User? @relation("CashCountOpenedBy", fields: [openedById], references: [id])
   countedBy User? @relation("CashCountCountedBy", fields: [countedById], references: [id])
   createdBy User  @relation("CashCountCreatedBy", fields: [createdById], references: [id])
 
