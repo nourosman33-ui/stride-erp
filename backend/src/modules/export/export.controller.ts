@@ -105,8 +105,10 @@ export class ExportController {
     this.send(res, `stride-expenses-${stamp()}.pdf`, await this.exportsPdf.expenseListPdf(query, user), PDF_MIME);
   }
 
+  // Cashier included to match the end-of-day brief they can already view and
+  // print from /pos/end-day — same data, just as a file.
   @Get("daily-closing.pdf")
-  @Roles("owner", "manager")
+  @Roles("owner", "manager", "cashier")
   async dailyClosingPdf(@Query("storeId") storeId: string, @Query("date") date: string, @Res() res: Response) {
     this.send(res, `stride-daily-closing-${date}.pdf`, await this.exportsPdf.dailyClosingPdf(storeId, date), PDF_MIME);
   }

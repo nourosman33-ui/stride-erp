@@ -244,23 +244,132 @@
   }
 }
 
-/* Printing a receipt (ReceiptView / ReturnReceiptView, marked `.receipt-print-area`)
-   should print just the receipt, not the surrounding sidebar/dialog chrome — works
-   whether the receipt is in a page card or a Radix dialog portal, since it hides by
-   visibility rather than relying on DOM position. */
+/* ---------------------------------------------------------------------------
+   Printing. Everything printable is portalled into `.print-document` attached
+   directly to <body> (see components/print-document.tsx), so print never has to
+   fight the transforms, max-heights and overflow clipping of the dialog or page
+   layout it happens to be displayed in.
+   --------------------------------------------------------------------------- */
+
+/* Off-screen by default — it only exists for the printer. */
+.print-document {
+  display: none;
+}
+
 @media print {
-  body * {
-    visibility: hidden;
+  @page {
+    size: auto;
+    margin: 12mm;
   }
-  .receipt-print-area,
-  .receipt-print-area * {
-    visibility: visible;
+
+  html,
+  body {
+    background: #fff !important;
+    /* The app shell is a fixed-height flex layout; releasing it lets long
+       reports flow onto as many sheets as they need instead of one clipped page. */
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
   }
-  .receipt-print-area {
-    position: absolute;
-    inset: 0;
+
+  /* Hide the entire app (including Radix dialog portals and the toaster, which
+     are body children too) and print only the portalled document. The
+     `body > .print-document` selector is more specific, so it wins. */
+  body > * {
+    display: none !important;
+  }
+  body > .print-document {
+    display: block !important;
+  }
+
+  .print-document {
+    /* Re-point the theme tokens at an ink-friendly palette so every utility
+       class already used by the receipt components (text-muted-foreground,
+       border-border, text-destructive, …) resolves to something legible on
+       paper — in dark mode these would otherwise print white-on-white. */
+    --background: #fff;
+    --foreground: #000;
+    --card: #fff;
+    --card-foreground: #000;
+    --popover: #fff;
+    --popover-foreground: #000;
+    --muted: #fff;
+    --muted-foreground: #4a4a4a;
+    --accent: #fff;
+    --accent-foreground: #000;
+    --primary: #000;
+    --primary-foreground: #fff;
+    --secondary: #fff;
+    --secondary-foreground: #000;
+    --border: #9a9a9a;
+    --input: #9a9a9a;
+    /* Colour carries no meaning once printed on a mono/thermal printer — the
+       minus sign and the label already say "refund". Black reproduces reliably. */
+    --destructive: #000;
+    --destructive-foreground: #fff;
+    --success: #000;
+    --success-foreground: #fff;
+    --warning: #000;
+    --warning-foreground: #fff;
+
+    color: #000;
+    background: #fff;
+    font-size: 11pt;
+    line-height: 1.4;
+  }
+
+  /* A receipt is a narrow column: 80mm is the standard POS roll width, and on
+     A4 it still reads as a receipt rather than a stretched-out page. */
+  .print-document[data-print-variant="receipt"] > * {
+    width: 80mm;
+    max-width: 100%;
+    margin: 0 auto;
+  }
+
+  .print-document[data-print-variant="report"] > * {
+    width: 100%;
     max-width: none;
-    margin: 0;
-    padding: 1rem;
+  }
+
+  /* Interactive chrome never belongs on paper, even if a printed card contains it. */
+  .print-document button,
+  .print-document [role="button"],
+  .print-document .print-hide {
+    display: none !important;
+  }
+
+  /* Keep logos/photos from being dropped by the browser's "no background
+     graphics" default. */
+  .print-document img {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    max-width: 100%;
+  }
+
+  /* Don't slice a line item, table row or summary block across a page break,
+     and repeat table headers on every sheet of a long report. */
+  .print-document tr,
+  .print-document .print-keep-together {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .print-document thead {
+    display: table-header-group;
+  }
+
+  .print-document table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .print-document th,
+  .print-document td {
+    padding: 4px 6px;
+  }
+
+  /* Shadows and rounded cards are screen affordances; on paper they just muddy
+     the edges or waste toner. */
+  .print-document * {
+    box-shadow: none !important;
+    text-shadow: none !important;
   }
 }

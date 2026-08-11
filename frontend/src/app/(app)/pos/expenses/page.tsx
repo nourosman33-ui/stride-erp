@@ -40,6 +40,8 @@ import { NoStoreSelected } from "@/components/no-store-selected";
 import { CashFlowCard } from "@/components/financial-dashboard/cash-flow-card";
 import { DailyClosingCard } from "@/components/financial-dashboard/daily-closing-card";
 import { ExportMenuButton } from "@/components/export-menu-button";
+import { PrintOnly } from "@/components/print-document";
+import { ReportDocument } from "@/components/report-document";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -576,6 +578,7 @@ export default function ExpensesPage() {
                   storeId={activeStoreId}
                   params={{ period }}
                   label={t("exports.exportExpenses")}
+                  showPrint
                 />
               )}
               <ExpenseFormDialog
@@ -861,6 +864,42 @@ export default function ExpensesPage() {
           <CategoryManager categories={cats} />
         </div>
       )}
+
+      <PrintOnly variant="report">
+        <ReportDocument
+          store={activeStore}
+          title={t("reportDoc.expensesTitle")}
+          subtitle={t(`expenses.filter${period.charAt(0).toUpperCase()}${period.slice(1)}` as TranslationKey)}
+          emptyLabel={t("expenses.noExpenses")}
+          columns={[
+            { key: "date", label: t("expenses.colDate") },
+            { key: "category", label: t("expenses.colCategory") },
+            { key: "description", label: t("expenses.colDescription") },
+            { key: "method", label: t("expenses.colPaymentMethod") },
+            { key: "addedBy", label: t("expenses.colAddedBy") },
+            { key: "status", label: t("expenses.colStatus") },
+            { key: "amount", label: t("expenses.colAmount"), align: "end" },
+          ]}
+          rows={filteredItems.map((e) => ({
+            date: formatDateTime(e.occurredAt),
+            category: e.category.name,
+            description: e.description,
+            method: t(PAYMENT_METHOD_KEY[e.paymentMethod]),
+            addedBy: e.createdBy.fullName,
+            status: t(STATUS_KEY[e.status]),
+            amount: formatMoney(e.amount, currency),
+          }))}
+          totals={[
+            {
+              label: t("reportDoc.totalLabel"),
+              value: formatMoney(
+                filteredItems.reduce((sum, e) => sum + Number(e.amount), 0),
+                currency,
+              ),
+            },
+          ]}
+        />
+      </PrintOnly>
     </div>
   );
 }

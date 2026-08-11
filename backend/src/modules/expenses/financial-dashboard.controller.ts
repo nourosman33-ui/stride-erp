@@ -35,8 +35,11 @@ export class FinancialDashboardController {
     return this.dashboard.getCustomRange(storeId, new Date(from), toDate);
   }
 
+  // Cashier included: this is the end-of-day brief they close the till against.
+  // It reports takings, expenses and cash position only — no COGS, margin or
+  // capital data, which stay owner-only on the routes above.
   @Get("daily-closing/:date")
-  @Roles("owner", "manager")
+  @Roles("owner", "manager", "cashier")
   getDailyClosing(@Param("date") date: string, @Query("storeId") storeId: string) {
     return this.dashboard.getDailyClosing(storeId, new Date(date));
   }

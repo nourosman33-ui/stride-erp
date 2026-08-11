@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown, Download, Loader2 } from "lucide-react";
+import { ChevronDown, Download, Loader2, Printer } from "lucide-react";
 import { toast } from "sonner";
 
 import { downloadExport, type ExportFormat, type ExportKind } from "@/lib/api/export";
@@ -20,6 +20,7 @@ export function ExportMenuButton({
   path,
   label,
   formats = FORMATS,
+  showPrint = false,
 }: {
   kind: ExportKind;
   storeId: string | null;
@@ -29,6 +30,9 @@ export function ExportMenuButton({
   label?: string;
   /** Restrict the offered formats — e.g. PDF-only report endpoints. */
   formats?: ExportFormat[];
+  /** Adds a "Print" item that prints the page's PrintOnly report document.
+   * Only pass this where such a document is actually rendered. */
+  showPrint?: boolean;
 }) {
   const { t } = useLocale();
   const [busyFormat, setBusyFormat] = React.useState<ExportFormat | null>(null);
@@ -66,6 +70,12 @@ export function ExportMenuButton({
         )}
         {formats.includes("pdf") && (
           <DropdownMenuItem onClick={() => run("pdf")}>{t("exports.formatPdf")}</DropdownMenuItem>
+        )}
+        {showPrint && (
+          <DropdownMenuItem onClick={() => window.print()}>
+            <Printer className="size-3.5" />
+            {t("exports.formatPrint")}
+          </DropdownMenuItem>
         )}
       </DropdownMenuContent>
     </DropdownMenu>

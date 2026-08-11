@@ -10,6 +10,7 @@ import { useLocale } from "@/lib/i18n/locale-context";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { PageHeader } from "@/components/layout/page-header";
 import { ReceiptView } from "@/components/receipt-view";
+import { Printable } from "@/components/print-document";
 import { SalesOrderStatusBadge } from "@/components/status-badge";
 import { PAYMENT_METHOD_KEY } from "@/lib/payment-methods";
 import { Badge } from "@/components/ui/badge";
@@ -116,7 +117,9 @@ export default function SaleDetailPage() {
             </Button>
           </CardHeader>
           <CardContent>
-            <ReceiptView order={order} />
+            <Printable>
+              <ReceiptView order={order} />
+            </Printable>
           </CardContent>
         </Card>
       </div>

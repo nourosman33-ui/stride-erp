@@ -7,11 +7,15 @@ import { AuditService } from "../../common/audit/audit.service";
 import { CashFlowService } from "./cash-flow.service";
 import { SetCashAmountDto } from "./dto/set-cash-amount.dto";
 
-/** Manager/owner only for MVP — till counting isn't granted to cashier by requirement #8's
- * explicit permission list (its cash-flow/closing bullets only mention Manager/Owner). */
+/**
+ * Cashiers are included because closing the till at end of day is front-counter
+ * work — they physically count the drawer. What they can reach is only their own
+ * store's cash position (opening/counted/expected); margin, cost and profit data
+ * stays behind FinanceController's owner-only guard.
+ */
 @Controller("cash-counts")
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles("owner", "manager")
+@Roles("owner", "manager", "cashier")
 export class CashCountsController {
   constructor(
     private readonly cashFlow: CashFlowService,

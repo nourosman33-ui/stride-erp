@@ -66,6 +66,15 @@ export interface CashFlowSummary {
   pendingCashImpact: { count: number; amount: number };
 }
 
+export interface DailyClosingExpenseLine {
+  id: string;
+  description: string;
+  categoryName: string;
+  paymentMethod: PaymentMethodType;
+  amount: number;
+  createdByName: string;
+}
+
 export interface DailyClosingSummary {
   date: string;
   totalSales: number;
@@ -81,6 +90,9 @@ export interface DailyClosingSummary {
   cashDifference: number | null;
   cashStatus: CashFlowStatus;
   pendingExpenses: { count: number; amount: number };
+  /** Store-wide and itemised, so the brief's lines reconcile against its total
+   * even for a cashier (whose GET /expenses view is scoped to their own rows). */
+  expenseLines: DailyClosingExpenseLine[];
 }
 
 export interface MonthlyReport {

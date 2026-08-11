@@ -52,6 +52,15 @@ export interface DashboardCharts {
   paymentMethodBreakdown: Record<PaymentMethodType, number>;
 }
 
+export interface DailyClosingExpenseLine {
+  id: string;
+  description: string;
+  categoryName: string;
+  paymentMethod: PaymentMethodType;
+  amount: number;
+  createdByName: string;
+}
+
 export interface DailyClosingSummary {
   date: string;
   totalSales: number;
@@ -67,6 +76,12 @@ export interface DailyClosingSummary {
   cashDifference: number | null;
   cashStatus: CashFlowSummary["status"];
   pendingExpenses: { count: number; amount: number };
+  /** Every approved ad-hoc expense for the day, whoever recorded it. Carried on
+   * this response rather than fetched from GET /expenses because that endpoint
+   * scopes a cashier to their own rows — which would leave the end-of-day brief
+   * itemising 3 lines under a store-wide total, and the two would not add up.
+   * The aggregate is already visible here, so itemising it reveals nothing new. */
+  expenseLines: DailyClosingExpenseLine[];
 }
 
 export interface MonthlyReport {
@@ -241,14 +256,16 @@ export class FinancialDashboardService {
   /** Requirement #10 — computed on demand, nothing persisted. */
   async getDailyClosing(storeId: string, date: Date): Promise<DailyClosingSummary> {
     const window = dayWindow(date);
-    const [pnl, paymentBreakdown, expenseWindow, operatingExpenses, flow, pending] = await Promise.all([
-      this.finance.getPnl(storeId, window.from, window.to),
-      this.finance.getPaymentMethodBreakdown(storeId, window.from, window.to),
-      this.expenseAnalytics.getWindowAnalytics(storeId, window.from, window.to),
-      this.finance.getOperatingExpensesTotal(storeId, window.from, window.to),
-      this.cashFlow.computeCashFlow(storeId, date),
-      this.expenses.getPendingSummary(storeId),
-    ]);
+    const [pnl, paymentBreakdown, expenseWindow, operatingExpenses, flow, pending, expenseRows] =
+      await Promise.all([
+        this.finance.getPnl(storeId, window.from, window.to),
+        this.finance.getPaymentMethodBreakdown(storeId, window.from, window.to),
+        this.expenseAnalytics.getWindowAnalytics(storeId, window.from, window.to),
+        this.finance.getOperatingExpensesTotal(storeId, window.from, window.to),
+        this.cashFlow.computeCashFlow(storeId, date),
+        this.expenses.getPendingSummary(storeId),
+        this.expenseAnalytics.listApprovedInWindow(storeId, window.from, window.to),
+      ]);
 
     const totalExpenses = money(expenseWindow.total + operatingExpenses);
 
@@ -267,6 +284,14 @@ export class FinancialDashboardService {
       cashDifference: flow.difference,
       cashStatus: flow.status,
       pendingExpenses: pending,
+      expenseLines: expenseRows.map((e) => ({
+        id: e.id,
+        description: e.description,
+        categoryName: e.category.name,
+        paymentMethod: e.paymentMethod,
+        amount: money(Number(e.amount)),
+        createdByName: e.createdBy.fullName,
+      })),
     };
   }
 

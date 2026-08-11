@@ -19,6 +19,7 @@ import {
   Bot,
   TrendingUp,
   Wallet,
+  CalendarCheck,
 } from "lucide-react";
 import type { Role } from "@/lib/api/types";
 import type { TranslationKey } from "@/lib/i18n/locale-context";
@@ -74,6 +75,9 @@ export const NAV_GROUPS: NavGroup[] = [
       // No `roles`: recording daily expenses is front-counter work too. Lives under
       // /pos so the cashier route guard in access-control.ts already allows it.
       { labelKey: "expenses.navLabel", href: "/pos/expenses", icon: Wallet },
+      // Closing the till is front-counter work, so no `roles` — and it lives under
+      // /pos so the cashier route guard in access-control.ts already allows it.
+      { labelKey: "endDay.navLabel", href: "/pos/end-day", icon: CalendarCheck },
       { labelKey: "nav.salesHistory", href: "/sales", icon: Receipt, roles: BACK_OFFICE_ROLES },
       { labelKey: "returns.historyTitle", href: "/sales/returns", icon: RotateCcw, roles: BACK_OFFICE_ROLES },
     ],

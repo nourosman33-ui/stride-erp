@@ -23,6 +23,7 @@ import {
   type SalesReturn,
 } from "@/lib/api/returns";
 import { ReturnReceiptView } from "@/components/return-receipt-view";
+import { Printable } from "@/components/print-document";
 import { getPosCatalog, listSales, type PosCatalogItem } from "@/lib/api/sales";
 import type { PaymentMethodType } from "@/lib/api/types";
 import { useAuth } from "@/lib/auth-context";
@@ -639,7 +640,11 @@ export default function ReturnsPage() {
                 })}
             </DialogDescription>
           </DialogHeader>
-          {completed && <ReturnReceiptView salesReturn={completed} />}
+          {completed && (
+            <Printable>
+              <ReturnReceiptView salesReturn={completed} />
+            </Printable>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => window.print()}>
               <Printer className="size-4" />

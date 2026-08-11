@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { Search } from "lucide-react";
+import { Printer, Search } from "lucide-react";
 
 import { listReturns } from "@/lib/api/returns";
 import { useActiveStore } from "@/lib/store-context";
@@ -11,6 +11,9 @@ import { useLocale } from "@/lib/i18n/locale-context";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { PageHeader } from "@/components/layout/page-header";
 import { NoStoreSelected } from "@/components/no-store-selected";
+import { PrintOnly } from "@/components/print-document";
+import { ReportDocument } from "@/components/report-document";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -48,7 +51,16 @@ export default function ReturnsHistoryPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title={t("returns.historyTitle")} description={activeStore?.name} />
+      <PageHeader
+        title={t("returns.historyTitle")}
+        description={activeStore?.name}
+        actions={
+          <Button variant="outline" size="sm" onClick={() => window.print()}>
+            <Printer className="size-4" />
+            {t("exports.formatPrint")}
+          </Button>
+        }
+      />
 
       <div className="relative max-w-md">
         <Search className="absolute top-1/2 start-3 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -126,6 +138,44 @@ export default function ReturnsHistoryPage() {
           </TableBody>
         </Table>
       </div>
+
+      <PrintOnly variant="report">
+        <ReportDocument
+          store={activeStore}
+          title={t("reportDoc.returnsTitle")}
+          subtitle={query.trim() ? query : undefined}
+          emptyLabel={t("returns.noReturns")}
+          columns={[
+            { key: "number", label: t("returns.colNumber") },
+            { key: "date", label: t("returns.colDate") },
+            { key: "invoice", label: t("returns.colInvoice") },
+            { key: "type", label: t("returns.colType") },
+            { key: "customer", label: t("returns.colCustomer") },
+            { key: "processedBy", label: t("returns.colProcessedBy") },
+            { key: "refunded", label: t("returns.colTotal"), align: "end" },
+            { key: "balance", label: t("returns.colBalance"), align: "end" },
+          ]}
+          rows={filtered.map((r) => ({
+            number: r.returnNumber,
+            date: formatDateTime(r.returnDate),
+            invoice: r.originalOrder?.invoiceNumber ?? "—",
+            type: t(r.type === "exchange" ? "returns.typeExchange" : "returns.typeRefund"),
+            customer: r.customer?.name ?? t("salesHistory.walkIn"),
+            processedBy: r.processedBy?.fullName ?? "—",
+            refunded: formatMoney(r.refundTotal, activeStore?.currency),
+            balance: formatMoney(Math.abs(Number(r.balanceDue)), activeStore?.currency),
+          }))}
+          totals={[
+            {
+              label: t("returns.colTotal"),
+              value: formatMoney(
+                filtered.reduce((sum, r) => sum + Number(r.refundTotal), 0),
+                activeStore?.currency,
+              ),
+            },
+          ]}
+        />
+      </PrintOnly>
     </div>
   );
 }

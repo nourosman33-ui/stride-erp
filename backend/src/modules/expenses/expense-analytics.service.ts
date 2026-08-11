@@ -174,4 +174,21 @@ export class ExpenseAnalyticsService {
   scopeFor(requester: AuthenticatedUser): string | undefined {
     return isElevated(requester.roles) ? undefined : requester.userId;
   }
+
+  /** Every approved expense in the window, store-wide and itemised — for the
+   * end-of-day brief, whose lines have to reconcile against its own total. */
+  listApprovedInWindow(storeId: string, from: Date, to: Date) {
+    return this.prisma.dailyExpense.findMany({
+      where: { storeId, status: "approved", deletedAt: null, occurredAt: { gte: from, lt: to } },
+      select: {
+        id: true,
+        description: true,
+        amount: true,
+        paymentMethod: true,
+        category: { select: { name: true } },
+        createdBy: { select: { fullName: true } },
+      },
+      orderBy: { occurredAt: "asc" },
+    });
+  }
 }

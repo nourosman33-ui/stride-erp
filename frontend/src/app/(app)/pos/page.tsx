@@ -28,6 +28,7 @@ import { formatDateTime, formatMoney, toNumber } from "@/lib/format";
 import { PageHeader } from "@/components/layout/page-header";
 import { NoStoreSelected } from "@/components/no-store-selected";
 import { ReceiptView } from "@/components/receipt-view";
+import { Printable } from "@/components/print-document";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -818,7 +819,11 @@ export default function PosPage() {
               {completedOrder && formatDateTime(completedOrder.orderDate)} · {activeStore?.name}
             </DialogDescription>
           </DialogHeader>
-          {completedOrder && <ReceiptView order={completedOrder} />}
+          {completedOrder && (
+            <Printable>
+              <ReceiptView order={completedOrder} />
+            </Printable>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => window.print()}>
               <Printer className="size-4" />

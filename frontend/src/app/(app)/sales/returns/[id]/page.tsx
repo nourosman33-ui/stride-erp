@@ -10,6 +10,7 @@ import { useLocale } from "@/lib/i18n/locale-context";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { PageHeader } from "@/components/layout/page-header";
 import { ReturnReceiptView } from "@/components/return-receipt-view";
+import { Printable } from "@/components/print-document";
 import { PAYMENT_METHOD_KEY } from "@/lib/payment-methods";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -154,7 +155,9 @@ export default function ReturnDetailPage() {
             </Button>
           </CardHeader>
           <CardContent>
-            <ReturnReceiptView salesReturn={salesReturn} />
+            <Printable>
+              <ReturnReceiptView salesReturn={salesReturn} />
+            </Printable>
           </CardContent>
         </Card>
       </div>

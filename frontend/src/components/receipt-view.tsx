@@ -22,7 +22,7 @@ export function ReceiptView({
   const currency = store?.currency;
 
   return (
-    <div className="receipt-print-area mx-auto max-w-sm space-y-4 text-sm">
+    <div className="mx-auto max-w-sm space-y-4 text-sm">
       <div className="flex flex-col items-center gap-1.5 text-center">
         {store?.logoUrl && (
           // eslint-disable-next-line @next/next/no-img-element
