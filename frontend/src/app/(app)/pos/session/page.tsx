@@ -95,6 +95,9 @@ export default function SessionPage() {
   const [closingCash, setClosingCash] = React.useState("");
   const [confirmEndOpen, setConfirmEndOpen] = React.useState(false);
   const [viewingSessionId, setViewingSessionId] = React.useState<string | null>(null);
+  // Which session the printer should get. Null means "whatever is active",
+  // so a plain Ctrl+P still produces the current session's summary.
+  const [printSessionId, setPrintSessionId] = React.useState<string | null>(null);
   // Ticks once a minute so the on-screen duration stays honest without re-fetching.
   const [, forceTick] = React.useState(0);
 
@@ -115,6 +118,29 @@ export default function SessionPage() {
     queryFn: () => getSession(viewingSessionId!),
     enabled: !!viewingSessionId,
   });
+
+  // Same query key as the detail dialog, so opening then printing a session
+  // reuses the cached fetch rather than going back to the server.
+  const { data: printTarget } = useQuery({
+    queryKey: ["session", "detail", printSessionId],
+    queryFn: () => getSession(printSessionId!),
+    enabled: !!printSessionId,
+  });
+
+  React.useEffect(() => {
+    if (!printSessionId) return;
+    // Wait for the right session's data — otherwise a cached previous target
+    // would be what actually reaches the printer.
+    if (printTarget?.session?.id !== printSessionId) return;
+    // Yield once so the print portal is laid out before the dialog opens. A timeout
+    // rather than requestAnimationFrame: browsers suspend rAF in a backgrounded tab,
+    // which would leave the print silently never firing.
+    const timer = setTimeout(() => {
+      window.print();
+      setPrintSessionId(null);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [printSessionId, printTarget]);
 
   React.useEffect(() => {
     if (!active?.session) return;
@@ -166,6 +192,18 @@ export default function SessionPage() {
   const summary = active?.summary;
   const liveDuration = session ? Date.now() - new Date(session.startedAt).getTime() : 0;
 
+  // What the printer would get right now: the explicitly chosen session if its
+  // data has arrived, otherwise the live one so Ctrl+P still does the obvious thing.
+  // `/sessions/active` and `/sessions/:id` share a response type whose session is
+  // nullable, hence the explicit rebuild rather than passing the response through.
+  const chosen =
+    printSessionId && printTarget?.session?.id === printSessionId ? printTarget : null;
+  const printDoc = chosen?.session
+    ? { session: chosen.session, summary: chosen.summary, durationMs: chosen.durationMs }
+    : session && summary
+      ? { session, summary, durationMs: liveDuration }
+      : null;
+
   return (
     <div className="space-y-4">
       <PageHeader
@@ -179,8 +217,8 @@ export default function SessionPage() {
                 {t("session.viewLog")}
               </Link>
             </Button>
-            {isActive && (
-              <Button variant="outline" size="sm" onClick={() => window.print()}>
+            {isActive && active?.session && (
+              <Button variant="outline" size="sm" onClick={() => setPrintSessionId(active.session!.id)}>
                 <Printer className="size-4" />
                 {t("session.printSummary")}
               </Button>
@@ -350,14 +388,32 @@ export default function SessionPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-end">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 text-xs"
-                        onClick={() => setViewingSessionId(s.id)}
-                      >
-                        {t("session.viewDetails")}
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => setViewingSessionId(s.id)}
+                        >
+                          {t("session.viewDetails")}
+                        </Button>
+                        {/* Any session can be reprinted, not just the live one —
+                            reprints of a closed shift are the common case. */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs"
+                          title={t("session.printSummary")}
+                          disabled={printSessionId === s.id}
+                          onClick={() => setPrintSessionId(s.id)}
+                        >
+                          {printSessionId === s.id ? (
+                            <Loader2 className="size-3.5 animate-spin" />
+                          ) : (
+                            <Printer className="size-3.5" />
+                          )}
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
@@ -390,12 +446,29 @@ export default function SessionPage() {
           ) : (
             <div className="space-y-3">
               <SummaryGrid summary={viewing.summary} currency={cur} />
-              <Button asChild variant="outline" size="sm">
-                <Link href={`/pos/transactions?sessionId=${viewing.session?.id ?? ""}`}>
-                  <ListOrdered className="size-4" />
-                  {t("session.viewSessionLog")}
-                </Link>
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button asChild variant="outline" size="sm">
+                  <Link href={`/pos/transactions?sessionId=${viewing.session?.id ?? ""}`}>
+                    <ListOrdered className="size-4" />
+                    {t("session.viewSessionLog")}
+                  </Link>
+                </Button>
+                {viewing.session && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!!printSessionId}
+                    onClick={() => setPrintSessionId(viewing.session!.id)}
+                  >
+                    {printSessionId ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Printer className="size-4" />
+                    )}
+                    {t("session.printSummary")}
+                  </Button>
+                )}
+              </div>
             </div>
           )}
         </DialogContent>
@@ -423,13 +496,17 @@ export default function SessionPage() {
         </DialogContent>
       </Dialog>
 
-      {isActive && summary && (
-        <PrintOnly variant="report">
+      {/* Exactly one printable document may exist at a time, or the printer would
+          get several. A chosen session wins; otherwise the live one is what a bare
+          Ctrl+P produces. `variant="receipt"` prints it as an 80mm till slip, the
+          same format as a sales receipt. */}
+      {printDoc && (
+        <PrintOnly variant="receipt">
           <SessionBriefDocument
             store={activeStore}
-            session={session}
-            summary={summary}
-            durationMs={liveDuration}
+            session={printDoc.session}
+            summary={printDoc.summary}
+            durationMs={printDoc.durationMs}
           />
         </PrintOnly>
       )}
