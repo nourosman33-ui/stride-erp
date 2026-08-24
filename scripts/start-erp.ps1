@@ -141,7 +141,10 @@ if (Test-PortOpen -Port $BackendPort) {
 } else {
   Write-Log "Starting backend on $BackendPort"
   $env:PORT = "$BackendPort"
-  $env:CORS_ORIGIN = "http://localhost:$FrontendPort"
+  # CORS now auto-trusts any origin on this port from localhost, the LAN, or a
+  # Tailscale/VPN address (see backend/src/common/cors-origin.ts) — FRONTEND_PORT
+  # is all it needs to know, no IP address to keep in sync here.
+  $env:FRONTEND_PORT = "$FrontendPort"
   Start-Process -FilePath "node" -ArgumentList "dist\src\main.js" `
     -WorkingDirectory $BackendDir -WindowStyle Hidden `
     -RedirectStandardOutput (Join-Path $LogDir "backend.out.log") `

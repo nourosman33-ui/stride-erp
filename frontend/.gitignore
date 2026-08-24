@@ -30,8 +30,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files — .env.example is the template and should be tracked, so it's
+# excluded from the blanket ignore below (matches the backend's .gitignore intent).
 .env*
+!.env.example
 
 # vercel
 .vercel

@@ -1,4 +1,19 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000/api/v1";
+// Resolved per-request from wherever the page was actually loaded, rather than a
+// value baked in at build time. The frontend and backend always run on the same
+// host, one port apart (3002/3000 in dev, 4001/4000 in the permanent instance) —
+// so deriving the API host from window.location.hostname means the same build
+// works whether it's opened via localhost, a LAN IP, or a VPN address, with no
+// rebuild needed when the network path changes. NEXT_PUBLIC_API_URL remains the
+// fallback for SSR (no `window`) and for the rare case the API truly lives on a
+// different host than the frontend.
+const BACKEND_PORT = process.env.NEXT_PUBLIC_BACKEND_PORT ?? "3000";
+
+function resolveApiBaseUrl(): string {
+  if (typeof window !== "undefined") {
+    return `${window.location.protocol}//${window.location.hostname}:${BACKEND_PORT}/api/v1`;
+  }
+  return process.env.NEXT_PUBLIC_API_URL ?? `http://localhost:${BACKEND_PORT}/api/v1`;
+}
 const TOKEN_COOKIE = "stride_token";
 
 export class ApiError extends Error {
@@ -53,7 +68,7 @@ interface RequestOptions {
 }
 
 function buildUrl(path: string, params?: RequestOptions["params"]): string {
-  const url = new URL(`${API_BASE_URL}${path}`);
+  const url = new URL(`${resolveApiBaseUrl()}${path}`);
   if (params) {
     for (const [key, value] of Object.entries(params)) {
       if (value !== undefined && value !== null && value !== "") {

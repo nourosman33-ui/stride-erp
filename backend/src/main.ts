@@ -2,11 +2,12 @@ import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import { ValidationPipe } from "@nestjs/common";
 import { AppModule } from "./app.module";
+import { buildCorsOriginChecker } from "./common/cors-origin";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.enableCors({
-    origin: process.env.CORS_ORIGIN?.split(",") ?? ["http://localhost:3001"],
+    origin: buildCorsOriginChecker(process.env.FRONTEND_PORT ?? "3001"),
     credentials: true,
   });
   app.useGlobalPipes(
